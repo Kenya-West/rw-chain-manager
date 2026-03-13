@@ -5,6 +5,6 @@
     "types": []
   },
   "files": ["src/main.ts", "src/polyfills.ts"],
-  "include": ["src/**/*.d.ts"],
-  "exclude": ["**/*.stories.*"]
+  "include": ["src/**/*.d.ts", "src/**/*.ts"],
+  "exclude": ["**/*.stories.*", "**/*.spec.ts", "src/assets/typescript-sdk.example.ts"]
 }

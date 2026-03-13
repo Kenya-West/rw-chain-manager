@@ -12,4 +12,4 @@ RUN npm run build --prod
 
 FROM nginx:alpine
 
-COPY --from=builder /usr/src/app/dist/angular-starter/ /usr/share/nginx/html
+COPY --from=builder /usr/src/app/dist/rw-chain-manager/ /usr/share/nginx/html

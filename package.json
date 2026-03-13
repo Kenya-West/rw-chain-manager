@@ -1,16 +1,19 @@
 {
-  "name": "angular-starter",
+  "name": "rw-chain-manager",
   "version": "0.0.1",
-  "description": "The Angular starter / boilerplate project to start a new enterprise project",
-  "author": "Wilfried Lucha <wilfried@lucha.at>",
-  "homepage": "https://lucha.at",
+  "description": "Based on angular-starter (https://github.com/wlucha/angular-starter)",
+  "author": "Kenya-West",
+  "homepage": "https://hire.kenyawest.me",
   "license": "MIT",
   "contributors": [
-    "Wilfried Lucha <wilfried@lucha.at>"
+    "Wilfried Lucha <wilfried@lucha.at>",
+    "Kenya-West"
   ],
   "keywords": [
     "angular",
     "angular 21",
+    "rw-chain-manager",
+    "remnawave",
     "angular-starter",
     "angular starter",
     "angular-boilerplate",
@@ -27,11 +30,6 @@
     "storybook",
     "tailwind"
   ],
-  "repository": "https://github.com/wlucha/angular-starter.git",
-  "bugs": {
-    "url": "https://github.com/wlucha/angular-starter/issues"
-  },
-  "readme": "https://github.com/wlucha/angular-starter/blob/master/README.md",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -45,14 +43,14 @@
     "lint": "eslint src/app/**/*.ts",
     "e2e": "playwright test",
     "compodoc": "npx compodoc -p tsconfig.app.json",
-    "analyze": "source-map-explorer dist/angular-starter/**/*.js",
+    "analyze": "source-map-explorer dist/rw-chain-manager/**/*.js",
     "prettier": "prettier --write \"src/app/**/*.{js,json,css,scss,less,md,ts,html,component.html}\"",
     "prepare": "husky",
     "audit": "auditjs ossi",
     "version": "auto-changelog -p && git add CHANGELOG.md",
     "docs:json": "compodoc -p ./tsconfig.json -e json -d .",
-    "storybook": "ng run angular-starter:storybook",
-    "build-storybook": "ng run angular-starter:build-storybook"
+    "storybook": "ng run rw-chain-manager:storybook",
+    "build-storybook": "ng run rw-chain-manager:build-storybook"
   },
   "private": false,
   "dependencies": {
@@ -67,6 +65,7 @@
     "@angular/platform-browser-dynamic": "^21.1.5",
     "@angular/router": "^21.1.5",
     "@jsverse/transloco": "^8.2.1",
+    "@remnawave/backend-contract": "^2.6.45",
     "@tailwindcss/postcss": "^4.2.0",
     "postcss": "^8.5.6",
     "rxjs": "~7.8.2",
