@@ -1,7 +1,7 @@
 {
   "name": "Angular 21 Starter",
   "description": "Angular 21 Starter project with Material, Transloco, Jest & Compodoc",
-  "repository": "https://github.com/wlucha/angular-starter",
+  "repository": "https://github.com/wlucha/rw-chain-manager",
   "keywords": [
     "angular",
     "jest",

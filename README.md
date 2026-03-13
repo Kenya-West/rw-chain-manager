@@ -1,8 +1,8 @@
 ![Angular Starter Banner](https://user-images.githubusercontent.com/7531596/128626297-df86020b-1cdc-43b5-a692-6c4c45534ec1.png)
 
 <p align="center">
-  <a href="https://github.com/wlucha/angular-starter/blob/master/LICENSE"><img src="https://img.shields.io/github/license/wlucha/angular-starter" alt="License"></a>
-  <a href="https://github.com/wlucha/angular-starter/stargazers"><img src="https://img.shields.io/github/stars/wlucha/angular-starter?style=social" alt="Stars"></a>
+  <a href="https://github.com/wlucha/rw-chain-manager/blob/master/LICENSE"><img src="https://img.shields.io/github/license/wlucha/rw-chain-manager" alt="License"></a>
+  <a href="https://github.com/wlucha/rw-chain-manager/stargazers"><img src="https://img.shields.io/github/stars/wlucha/rw-chain-manager?style=social" alt="Stars"></a>
 </p>
 
 <p align="center"><strong>A production-ready Angular 21 starter template with modern tooling, testing, and best practices baked in.</strong></p>
@@ -35,8 +35,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/wlucha/angular-starter
-cd angular-starter
+git clone https://github.com/wlucha/rw-chain-manager
+cd rw-chain-manager
 
 # Install dependencies
 npm install
@@ -50,8 +50,8 @@ Open [http://localhost:4200](http://localhost:4200) in your browser.
 ### Docker
 
 ```bash
-docker build . -t angular-starter
-docker run -p 3000:80 angular-starter
+docker build . -t rw-chain-manager
+docker run -p 3000:80 rw-chain-manager
 ```
 
 ---
@@ -78,7 +78,7 @@ docker run -p 3000:80 angular-starter
 ## Project Structure
 
 ```
-angular-starter/
+rw-chain-manager/
 ├── src/
 │   ├── app/              # Application source code
 │   ├── assets/            # Static assets
@@ -96,7 +96,7 @@ angular-starter/
 
 ## Demo & Deployment
 
-- **Live Demo**: [Open in StackBlitz](https://stackblitz.com/github/wlucha/angular-starter)
+- **Live Demo**: [Open in StackBlitz](https://stackblitz.com/github/wlucha/rw-chain-manager)
 - **Deploy to Heroku**: [![Deploy](https://www.herokucdn.com/deploy/button.png)](https://heroku.com/deploy)
 
 ---
@@ -105,7 +105,7 @@ angular-starter/
 
 Contributions are welcome! Please read the [Contribution Guidelines](CONTRIBUTING.md) before submitting a PR.
 
-Have a feature request or found a bug? [Open an issue](https://github.com/wlucha/angular-starter/issues).
+Have a feature request or found a bug? [Open an issue](https://github.com/wlucha/rw-chain-manager/issues).
 
 ---
 
@@ -116,5 +116,5 @@ This project is licensed under the [MIT License](LICENSE).
 ---
 
 <p align="center">
-  If this project helps you, please give it a ⭐ on <a href="https://github.com/wlucha/angular-starter">GitHub</a>!
+  If this project helps you, please give it a ⭐ on <a href="https://github.com/wlucha/rw-chain-manager">GitHub</a>!
 </p>
