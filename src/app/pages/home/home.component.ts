@@ -7,18 +7,21 @@ import {
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
 import { MatButtonModule } from "@angular/material/button";
 import { MatCardModule } from "@angular/material/card";
+import { MatDividerModule } from "@angular/material/divider";
 import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatIconModule } from "@angular/material/icon";
 import { MatInputModule } from "@angular/material/input";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
+import { MatSelectModule } from "@angular/material/select";
+import { MatTooltipModule } from "@angular/material/tooltip";
 
 import { GetStatsCommand } from "@remnawave/backend-contract";
 
-import { ConnectionConfigService } from "../../services/connection-config.service";
-import { LocalStorageService } from "../../services/local-storage.service";
+import {
+    ConnectionConfigService,
+    ConnectionProfile,
+} from "../../services/connection-config.service";
 import { SystemApiService } from "../../services/api/system-api.service";
-
-const CONNECTION_STORAGE_KEY = "rw-connection-config";
 
 @Component({
     selector: "app-home",
@@ -26,30 +29,83 @@ const CONNECTION_STORAGE_KEY = "rw-connection-config";
     imports: [
         ReactiveFormsModule,
         MatCardModule,
+        MatDividerModule,
         MatFormFieldModule,
         MatInputModule,
         MatButtonModule,
         MatIconModule,
         MatProgressSpinnerModule,
+        MatSelectModule,
+        MatTooltipModule,
     ],
     template: `
-        <div
-            class="flex min-h-screen items-center justify-center bg-gray-50 p-4"
-        >
-            <mat-card class="w-full max-w-lg">
+        <div class="mx-auto max-w-lg">
+            <mat-card>
                 <mat-card-header>
                     <mat-card-title>Remnawave Connection</mat-card-title>
                     <mat-card-subtitle>
-                        Configure your Remnawave panel connection
+                        Manage your Remnawave panel connections
                     </mat-card-subtitle>
                 </mat-card-header>
 
                 <mat-card-content>
+                    <!-- Profile selector -->
+                    <div class="mt-4 flex items-center gap-2">
+                        <mat-form-field appearance="outline" class="flex-1">
+                            <mat-label>Profile</mat-label>
+                            <mat-select
+                                [value]="selectedProfileId()"
+                                (selectionChange)="selectProfile($event.value)"
+                            >
+                                @for (
+                                    profile of connectionConfig.profiles();
+                                    track profile.id
+                                ) {
+                                    <mat-option [value]="profile.id">
+                                        {{ profile.name }}
+                                    </mat-option>
+                                }
+                            </mat-select>
+                        </mat-form-field>
+                        <button
+                            mat-icon-button
+                            (click)="newProfile()"
+                            matTooltip="New profile"
+                        >
+                            <mat-icon>add</mat-icon>
+                        </button>
+                        <button
+                            mat-icon-button
+                            (click)="deleteProfile()"
+                            [disabled]="!selectedProfileId()"
+                            matTooltip="Delete profile"
+                        >
+                            <mat-icon>delete</mat-icon>
+                        </button>
+                    </div>
+
+                    <mat-divider class="my-2" />
+
+                    <!-- Connection form -->
                     <form
                         [formGroup]="form"
                         (ngSubmit)="testConnection()"
                         class="mt-4 flex flex-col gap-2"
                     >
+                        <mat-form-field appearance="outline">
+                            <mat-label>Profile name</mat-label>
+                            <input
+                                matInput
+                                formControlName="name"
+                                placeholder="My Server"
+                            />
+                            @if (form.controls.name.hasError("required")) {
+                                <mat-error
+                                    >Profile name is required</mat-error
+                                >
+                            }
+                        </mat-form-field>
+
                         <mat-form-field appearance="outline">
                             <mat-label>Proxy endpoint</mat-label>
                             <input
@@ -57,13 +113,9 @@ const CONNECTION_STORAGE_KEY = "rw-connection-config";
                                 formControlName="proxy"
                                 placeholder="https://cors-1.youraccount.workers.dev"
                             />
-                            <mat-hint
-                                >Will be used to avoid CORS. Based on your
-                                reverse proxy configuration</mat-hint
-                            >
-                            @if (form.controls.domain.hasError("required")) {
-                                <mat-error>Domain is required</mat-error>
-                            }
+                            <mat-hint>
+                                Optional. Used to avoid CORS via reverse proxy
+                            </mat-hint>
                         </mat-form-field>
 
                         <mat-form-field appearance="outline">
@@ -98,7 +150,9 @@ const CONNECTION_STORAGE_KEY = "rw-connection-config";
                                 type="password"
                                 placeholder="Bearer token"
                             />
-                            @if (form.controls.apiToken.hasError("required")) {
+                            @if (
+                                form.controls.apiToken.hasError("required")
+                            ) {
                                 <mat-error>API Token is required</mat-error>
                             }
                         </mat-form-field>
@@ -111,26 +165,35 @@ const CONNECTION_STORAGE_KEY = "rw-connection-config";
                                 type="password"
                                 placeholder="Optional reverse proxy key"
                             />
-                            <mat-hint
-                                >Optional, for Caddy/reverse proxy
-                                auth</mat-hint
-                            >
+                            <mat-hint>
+                                Optional, for Caddy/reverse proxy auth
+                            </mat-hint>
                         </mat-form-field>
 
-                        <button
-                            mat-raised-button
-                            color="primary"
-                            type="submit"
-                            [disabled]="form.invalid || loading()"
-                            class="mt-2"
-                        >
-                            @if (loading()) {
-                                <mat-spinner diameter="20" />
-                            } @else {
-                                <mat-icon>wifi_tethering</mat-icon>
-                            }
-                            Test Connection
-                        </button>
+                        <div class="mt-2 flex gap-2">
+                            <button
+                                mat-raised-button
+                                color="primary"
+                                type="button"
+                                (click)="saveProfile()"
+                                [disabled]="form.invalid"
+                            >
+                                <mat-icon>save</mat-icon>
+                                Save
+                            </button>
+                            <button
+                                mat-raised-button
+                                type="submit"
+                                [disabled]="form.invalid || loading()"
+                            >
+                                @if (loading()) {
+                                    <mat-spinner diameter="20" />
+                                } @else {
+                                    <mat-icon>wifi_tethering</mat-icon>
+                                }
+                                Test Connection
+                            </button>
+                        </div>
                     </form>
 
                     @if (error()) {
@@ -138,7 +201,8 @@ const CONNECTION_STORAGE_KEY = "rw-connection-config";
                             class="mt-4 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700"
                             role="alert"
                         >
-                            <strong>Connection failed:</strong> {{ error() }}
+                            <strong>Connection failed:</strong>
+                            {{ error() }}
                         </div>
                     }
 
@@ -173,37 +237,75 @@ const CONNECTION_STORAGE_KEY = "rw-connection-config";
                                 <div>
                                     <strong>Online Now:</strong>
                                     {{
-                                        stats()!.response.onlineStats.onlineNow
+                                        stats()!.response.onlineStats
+                                            .onlineNow
                                     }}
                                 </div>
                                 <div>
                                     <strong>Nodes Online:</strong>
-                                    {{ stats()!.response.nodes.totalOnline }}
+                                    {{
+                                        stats()!.response.nodes.totalOnline
+                                    }}
                                 </div>
                                 <div>
                                     <strong>Uptime:</strong>
-                                    {{ formatUptime(stats()!.response.uptime) }}
+                                    {{
+                                        formatUptime(
+                                            stats()!.response.uptime
+                                        )
+                                    }}
                                 </div>
                             </div>
                         </div>
                     }
+
+                    <mat-divider class="my-4" />
+
+                    <!-- Import / Export -->
+                    <div class="flex gap-2">
+                        <button
+                            mat-stroked-button
+                            (click)="exportProfiles()"
+                            [disabled]="
+                                connectionConfig.profiles().length === 0
+                            "
+                        >
+                            <mat-icon>download</mat-icon>
+                            Export
+                        </button>
+                        <button
+                            mat-stroked-button
+                            (click)="fileInput.click()"
+                        >
+                            <mat-icon>upload</mat-icon>
+                            Import
+                        </button>
+                        <input
+                            #fileInput
+                            type="file"
+                            accept=".json"
+                            class="hidden"
+                            (change)="importProfiles($event)"
+                        />
+                    </div>
                 </mat-card-content>
             </mat-card>
         </div>
     `,
 })
 export class HomeComponent {
-    private connectionConfig = inject(ConnectionConfigService);
+    readonly connectionConfig = inject(ConnectionConfigService);
     private systemApi = inject(SystemApiService);
-    private localStorage = inject(LocalStorageService);
     private fb = inject(FormBuilder);
 
     readonly loading = signal(false);
     readonly error = signal<string | null>(null);
     readonly stats = signal<GetStatsCommand.Response | null>(null);
+    readonly selectedProfileId = signal<string | null>(null);
 
     readonly form = this.fb.nonNullable.group({
-        proxy: ["", Validators.required],
+        name: ["", Validators.required],
+        proxy: [""],
         domain: ["", Validators.required],
         port: [null as number | null],
         apiToken: ["", Validators.required],
@@ -211,27 +313,64 @@ export class HomeComponent {
     });
 
     constructor() {
-        const saved = this.localStorage.get<Record<string, unknown>>(
-            CONNECTION_STORAGE_KEY
-        );
-        if (saved) {
-            this.form.patchValue(saved);
+        const active = this.connectionConfig.activeProfile();
+        if (active) {
+            this.selectedProfileId.set(active.id);
+            this.loadProfileIntoForm(active);
         }
+    }
+
+    selectProfile(id: string): void {
+        this.selectedProfileId.set(id);
+        const profile = this.connectionConfig
+            .profiles()
+            .find((p) => p.id === id);
+        if (profile) {
+            this.loadProfileIntoForm(profile);
+            this.connectionConfig.activateProfile(id);
+        }
+        this.error.set(null);
+        this.stats.set(null);
+    }
+
+    newProfile(): void {
+        this.selectedProfileId.set(null);
+        this.form.reset();
+        this.error.set(null);
+        this.stats.set(null);
+    }
+
+    saveProfile(): void {
+        if (this.form.invalid) return;
+
+        const v = this.form.getRawValue();
+        const id = this.connectionConfig.saveProfile({
+            id: this.selectedProfileId() ?? undefined,
+            name: v.name,
+            proxy: v.proxy,
+            domain: v.domain,
+            port: v.port,
+            apiToken: v.apiToken,
+            xApiKey: v.xApiKey,
+        });
+
+        this.selectedProfileId.set(id);
+        this.connectionConfig.activateProfile(id);
+    }
+
+    deleteProfile(): void {
+        const id = this.selectedProfileId();
+        if (!id) return;
+        this.connectionConfig.deleteProfile(id);
+        this.selectedProfileId.set(null);
+        this.form.reset();
+        this.error.set(null);
+        this.stats.set(null);
     }
 
     async testConnection(): Promise<void> {
         if (this.form.invalid) return;
-
-        const { proxy, domain, port, apiToken, xApiKey } =
-            this.form.getRawValue();
-
-        this.connectionConfig.proxy.set(proxy);
-        this.connectionConfig.domain.set(domain);
-        this.connectionConfig.port.set(port);
-        this.connectionConfig.apiToken.set(apiToken);
-        this.connectionConfig.xApiKey.set(xApiKey);
-
-        this.localStorage.set(CONNECTION_STORAGE_KEY, this.form.getRawValue());
+        this.saveProfile();
 
         this.loading.set(true);
         this.error.set(null);
@@ -249,6 +388,38 @@ export class HomeComponent {
         }
     }
 
+    exportProfiles(): void {
+        const json = this.connectionConfig.exportProfiles();
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "rw-connections.json";
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    importProfiles(event: Event): void {
+        const input = event.target as HTMLInputElement;
+        const file = input.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                this.connectionConfig.importProfiles(
+                    reader.result as string
+                );
+            } catch {
+                this.error.set(
+                    "Failed to import profiles: invalid JSON"
+                );
+            }
+        };
+        reader.readAsText(file);
+        input.value = "";
+    }
+
     formatBytes(bytes: number): string {
         if (bytes === 0) return "0 B";
         const k = 1024;
@@ -262,5 +433,16 @@ export class HomeComponent {
         const hours = Math.floor((seconds % 86400) / 3600);
         const mins = Math.floor((seconds % 3600) / 60);
         return `${days}d ${hours}h ${mins}m`;
+    }
+
+    private loadProfileIntoForm(profile: ConnectionProfile): void {
+        this.form.patchValue({
+            name: profile.name,
+            proxy: profile.proxy,
+            domain: profile.domain,
+            port: profile.port,
+            apiToken: profile.apiToken,
+            xApiKey: profile.xApiKey,
+        });
     }
 }

@@ -33,6 +33,10 @@ speed-measure-plugin*.json
 !.vscode/extensions.json
 .history/*
 
+# IDE - Claude
+
+.claude/*
+
 # misc
 /.angular/cache
 /.sass-cache
