@@ -66,6 +66,8 @@ export interface ProxyChain {
     id: string;
     host: ChainHost;
     hops: ChainNodeHop[];
+    configProfileUuid: string;
+    configProfileName: string;
 }
 
 export interface ChainDetectionResult {
@@ -383,6 +385,10 @@ export class ProxyChainService {
                 current = nextNode;
             }
 
+            const entryCfgUuid =
+                entryNode.configProfile?.activeConfigProfileUuid ??
+                "unknown";
+
             if (hops.length >= 2) {
                 chains.push({
                     id: `chain-${host.uuid}`,
@@ -394,6 +400,10 @@ export class ProxyChainService {
                         vlessRouteId: host.vlessRouteId!,
                     },
                     hops,
+                    configProfileUuid: entryCfgUuid,
+                    configProfileName:
+                        configNameMap.get(entryCfgUuid) ??
+                        "Unknown Profile",
                 });
                 const path = hops
                     .map((h) => `"${h.name}"`)
