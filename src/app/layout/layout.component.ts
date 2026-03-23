@@ -69,6 +69,16 @@ import { routeFadeAnimation } from "../animations/route.animation";
                         <mat-icon matListItemIcon>link</mat-icon>
                         <span matListItemTitle>Proxy Chains</span>
                     </a>
+                    <a
+                        mat-list-item
+                        routerLink="/chain-diagnose"
+                        routerLinkActive
+                        #rlaDiagnose="routerLinkActive"
+                        [activated]="rlaDiagnose.isActive"
+                    >
+                        <mat-icon matListItemIcon>troubleshoot</mat-icon>
+                        <span matListItemTitle>Chain Diagnose</span>
+                    </a>
                     <mat-divider />
                     <a
                         mat-list-item

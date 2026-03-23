@@ -38,6 +38,14 @@ export const routes: Routes = [
                 data: { animation: "chains" },
             },
             {
+                path: "chain-diagnose",
+                loadComponent: () =>
+                    import(
+                        "./pages/chain-diagnose/chain-diagnose.component"
+                    ).then((m) => m.ChainDiagnoseComponent),
+                data: { animation: "chain-diagnose" },
+            },
+            {
                 path: "about",
                 loadComponent: () =>
                     import("./pages/about/about.component").then(
