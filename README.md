@@ -20,6 +20,7 @@ User -> Host (domain) -> Node A (entry) -> [routing rule] -> Outbound -> Node B 
 ```
 
 The chain is defined by:
+
 1. A **Host** with a VLESS route ID
 2. The Host's domain resolving to a **Node**'s IP address
 3. The Node's **Config Profile** containing routing rules that match the VLESS route ID
@@ -27,13 +28,13 @@ The chain is defined by:
 
 ## Pages
 
-| Route | Page | Description |
-|-------|------|-------------|
-| `/dashboard` | Dashboard | Connection status overview with quick-action cards |
-| `/connection` | Connection | Multi-profile connection manager (save, switch, import/export) |
-| `/chains` | Proxy Chains | Detect and visualize all proxy chains, grouped by config profile |
-| `/chain-diagnose` | Chain Diagnostics | Validate a specific VLESS route ID + config profile combination |
-| `/about` | About | Project info and tech stack |
+| Route             | Page              | Description                                                      |
+| ----------------- | ----------------- | ---------------------------------------------------------------- |
+| `/dashboard`      | Dashboard         | Connection status overview with quick-action cards               |
+| `/connection`     | Connection        | Multi-profile connection manager (save, switch, import/export)   |
+| `/chains`         | Proxy Chains      | Detect and visualize all proxy chains, grouped by config profile |
+| `/chain-diagnose` | Chain Diagnostics | Validate a specific VLESS route ID + config profile combination  |
+| `/about`          | About             | Project info and tech stack                                      |
 
 ## Architecture
 
@@ -66,13 +67,13 @@ PanelDataService (singleton)
 
 ### Key Services
 
-| Service | Responsibility |
-|---------|---------------|
-| `PanelDataService` | Fetches and caches all Remnawave panel data per connection |
-| `ProxyChainService` | Detects chains via DNS resolution and XRay config traversal |
-| `ChainDiagnoseService` | Runs sequential validation checks on a VLESS route + profile |
-| `ConnectionConfigService` | Manages connection profiles (multi-profile, localStorage) |
-| `DnsService` | Resolves domains via Cloudflare DNS-over-HTTPS with caching |
+| Service                   | Responsibility                                               |
+| ------------------------- | ------------------------------------------------------------ |
+| `PanelDataService`        | Fetches and caches all Remnawave panel data per connection   |
+| `ProxyChainService`       | Detects chains via DNS resolution and XRay config traversal  |
+| `ChainDiagnoseService`    | Runs sequential validation checks on a VLESS route + profile |
+| `ConnectionConfigService` | Manages connection profiles (multi-profile, localStorage)    |
+| `DnsService`              | Resolves domains via Cloudflare DNS-over-HTTPS with caching  |
 
 ### DNS Resolution
 
@@ -80,22 +81,23 @@ Chain detection resolves host and outbound domains to IP addresses using [Cloudf
 
 ## Tech Stack
 
-| Category | Tool | Version |
-|----------|------|---------|
-| Framework | Angular | 21 |
-| UI Components | Angular Material | 21 |
-| Styling | Tailwind CSS | 4 |
-| API Contract | @remnawave/backend-contract | 2.6.x |
-| Unit Testing | Jest | 30 |
-| E2E Testing | Playwright | 1.58 |
-| Linting | ESLint | 10 |
-| Formatting | Prettier | 3.8 |
-| i18n | Transloco | 8.2 |
-| Documentation | Compodoc | 1.2 |
-| Component Dev | Storybook | 10 |
-| Containerization | Docker | - |
+| Category         | Tool                        | Version |
+| ---------------- | --------------------------- | ------- |
+| Framework        | Angular                     | 21      |
+| UI Components    | Angular Material            | 21      |
+| Styling          | Tailwind CSS                | 4       |
+| API Contract     | @remnawave/backend-contract | 2.6.x   |
+| Unit Testing     | Jest                        | 30      |
+| E2E Testing      | Playwright                  | 1.58    |
+| Linting          | ESLint                      | 10      |
+| Formatting       | Prettier                    | 3.8     |
+| i18n             | Transloco                   | 8.2     |
+| Documentation    | Compodoc                    | 1.2     |
+| Component Dev    | Storybook                   | 10      |
+| Containerization | Docker                      | -       |
 
 Angular patterns used throughout:
+
 - Standalone components (no NgModules)
 - Signals and `computed()` for state management
 - `OnPush` change detection
@@ -103,6 +105,8 @@ Angular patterns used throughout:
 - `inject()` function (no constructor injection)
 
 ## Quick Start
+
+First, create a Cloudflare worker from [this repository](https://github.com/DAN3002/Cloudflare-CORS-Proxy). This is necessary step to use this project. This helps avoiding CORS errors.
 
 ```bash
 # Install dependencies
@@ -123,17 +127,17 @@ docker run -p 3000:80 rw-chain-manager
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm start` | Dev server on `localhost:4200` |
+| Command              | Description                         |
+| -------------------- | ----------------------------------- |
+| `npm start`          | Dev server on `localhost:4200`      |
 | `npm run build:prod` | Production build with optimizations |
-| `npm test` | Unit tests (Jest) |
-| `npm run e2e` | E2E tests (Playwright) |
-| `npm run lint` | Lint with ESLint |
-| `npm run prettier` | Format with Prettier |
-| `npm run storybook` | Storybook on `localhost:6006` |
-| `npm run compodoc` | Generate API documentation |
-| `npm run analyze` | Bundle size analysis |
+| `npm test`           | Unit tests (Jest)                   |
+| `npm run e2e`        | E2E tests (Playwright)              |
+| `npm run lint`       | Lint with ESLint                    |
+| `npm run prettier`   | Format with Prettier                |
+| `npm run storybook`  | Storybook on `localhost:6006`       |
+| `npm run compodoc`   | Generate API documentation          |
+| `npm run analyze`    | Bundle size analysis                |
 
 ## Project Structure
 
@@ -164,6 +168,7 @@ src/app/
 The app communicates with the Remnawave panel through a CORS proxy. The API contract is defined by `@remnawave/backend-contract` and the local spec at `src/assets/remnawave-api.json`.
 
 Requests flow through `BaseApiService` which handles:
+
 - URL construction via the configured proxy endpoint
 - Bearer token authentication
 - Optional `X-Api-Key` header for reverse proxy auth
