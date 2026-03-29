@@ -45,6 +45,8 @@ export interface DiagnoseResult {
     checks: DiagnoseCheckResult[];
     allPassed: boolean;
     squadInfo: SquadInfo | null;
+    matchingRules: XRayRoutingRule[];
+    matchedOutbounds: XRayOutbound[];
     logs: LogEntry[];
 }
 
@@ -402,10 +404,17 @@ export class ChainDiagnoseService {
                 `${checks.filter((c) => c.status === "fail").length} failure(s). ---`
         );
 
+        // Collect matched outbound objects for the visualization
+        const matchedOutbounds = matchedOutboundTags
+            .map((tag) => outbounds.find((o) => o.tag === tag))
+            .filter(Boolean) as XRayOutbound[];
+
         return {
             checks,
             allPassed,
             squadInfo,
+            matchingRules,
+            matchedOutbounds,
             logs: log.entries,
         };
     }
@@ -450,6 +459,8 @@ export class ChainDiagnoseService {
             checks,
             allPassed: false,
             squadInfo: null,
+            matchingRules: [],
+            matchedOutbounds: [],
             logs: log.entries,
         };
     }

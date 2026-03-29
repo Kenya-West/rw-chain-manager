@@ -9,6 +9,7 @@ import { FormsModule } from "@angular/forms";
 import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { MatButtonModule } from "@angular/material/button";
 import { MatCardModule } from "@angular/material/card";
+import { MatDividerModule } from "@angular/material/divider";
 import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatIconModule } from "@angular/material/icon";
 import { MatInputModule } from "@angular/material/input";
@@ -29,6 +30,16 @@ import {
     DiagnoseResult,
     CheckStatus,
 } from "../../services/chain-diagnose.service";
+import {
+    XRayRoutingRule,
+    XRayOutbound,
+} from "../../services/proxy-chain.service";
+
+interface RuleOutboundGroup {
+    tag: string;
+    rules: XRayRoutingRule[];
+    outbound: XRayOutbound | null;
+}
 
 @Component({
     selector: "app-chain-diagnose",
@@ -43,6 +54,7 @@ import {
         MatInputModule,
         MatProgressSpinnerModule,
         MatSelectModule,
+        MatDividerModule,
         LogViewerComponent,
     ],
     template: `
@@ -50,18 +62,14 @@ import {
             Chain Diagnostics
         </h1>
         <p class="mb-6 text-sm text-gray-500">
-            Validate that a VLESS route ID is correctly wired within
-            a config profile
+            Validate that a VLESS route ID is correctly wired within a config
+            profile
         </p>
 
         @if (!connectionConfig.isConfigured()) {
             <mat-card appearance="outlined">
-                <mat-card-content
-                    class="flex items-center gap-3 py-6"
-                >
-                    <mat-icon class="text-amber-500"
-                        >warning</mat-icon
-                    >
+                <mat-card-content class="flex items-center gap-3 py-6">
+                    <mat-icon class="text-amber-500">warning</mat-icon>
                     <span>
                         Please configure a connection first on the
                         <a
@@ -77,18 +85,14 @@ import {
             <!-- Input form -->
             <mat-card appearance="outlined" class="mb-6">
                 <mat-card-content>
-                    <div
-                        class="flex flex-wrap items-end gap-4 pt-2"
-                    >
+                    <div class="flex flex-wrap items-end gap-4 pt-2">
                         <mat-form-field appearance="outline">
                             <mat-label>VLESS Route ID</mat-label>
                             <input
                                 matInput
                                 type="number"
                                 [ngModel]="vlessRouteId()"
-                                (ngModelChange)="
-                                    vlessRouteId.set($event)
-                                "
+                                (ngModelChange)="vlessRouteId.set($event)"
                                 placeholder="1"
                             />
                         </mat-form-field>
@@ -101,24 +105,17 @@ import {
                             <mat-select
                                 [value]="selectedProfileUuid()"
                                 (selectionChange)="
-                                    selectedProfileUuid.set(
-                                        $event.value
-                                    )
+                                    selectedProfileUuid.set($event.value)
                                 "
                             >
-                                @for (
-                                    p of configProfiles();
-                                    track p.uuid
-                                ) {
+                                @for (p of configProfiles(); track p.uuid) {
                                     <mat-option [value]="p.uuid">
                                         {{ p.name }}
                                     </mat-option>
                                 }
                             </mat-select>
                             @if (panelDataService.loading()) {
-                                <mat-hint
-                                    >Loading data\u2026</mat-hint
-                                >
+                                <mat-hint>Loading data…</mat-hint>
                             }
                         </mat-form-field>
 
@@ -185,63 +182,142 @@ import {
                         let last = $last
                     ) {
                         <div
-                            class="flex items-start gap-4 rounded-lg border p-4 {{ borderColor(check.status) }}"
+                            class="flex items-start gap-4 rounded-lg border p-4 {{
+                                borderColor(check.status)
+                            }}"
                         >
                             <div
-                                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full {{ iconBg(check.status) }}"
+                                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full {{
+                                    iconBg(check.status)
+                                }}"
                             >
                                 <mat-icon
                                     class="{{ iconColor(check.status) }}"
-                                    >{{
-                                        statusIcon(check.status)
-                                    }}</mat-icon
+                                    >{{ statusIcon(check.status) }}</mat-icon
                                 >
                             </div>
                             <div class="min-w-0 flex-1">
-                                <div
-                                    class="flex items-center gap-2"
-                                >
+                                <div class="flex items-center gap-2">
+                                    <span class="font-medium text-gray-800">{{
+                                        check.title
+                                    }}</span>
                                     <span
-                                        class="font-medium text-gray-800"
-                                        >{{ check.title }}</span
-                                    >
-                                    <span
-                                        class="rounded px-2 py-0.5 text-xs font-semibold uppercase {{ badgeClass(check.status) }}"
-                                        >{{
-                                            check.status
-                                        }}</span
+                                        class="rounded px-2 py-0.5 text-xs font-semibold uppercase {{
+                                            badgeClass(check.status)
+                                        }}"
+                                        >{{ check.status }}</span
                                     >
                                 </div>
-                                <p
-                                    class="mt-1 text-sm text-gray-600"
-                                >
+                                <p class="mt-1 text-sm text-gray-600">
                                     {{ check.message }}
                                 </p>
                             </div>
                         </div>
                         @if (!last) {
-                            <div
-                                class="ml-5 h-4 w-px bg-gray-300"
-                            ></div>
+                            <div class="ml-5 h-4 w-px bg-gray-300"></div>
                         }
                     }
                 </div>
 
-                <!-- Squad info -->
-                @if (
-                    result()!.allPassed && result()!.squadInfo
-                ) {
-                    <mat-card
-                        appearance="outlined"
-                        class="mt-6"
-                    >
+                <!-- Rules & Outbounds mapping -->
+                @if (ruleOutboundGroups().length > 0) {
+                    <mat-card appearance="outlined" class="mt-6">
                         <mat-card-header>
                             <mat-card-title
-                                >Affected Squads</mat-card-title
+                                >Rules &amp; Outbounds</mat-card-title
                             >
                             <mat-card-subtitle>
-                                Squads that use this chain
-                                configuration
+                                Routing rules linked to outbounds by tag
+                            </mat-card-subtitle>
+                        </mat-card-header>
+                        <mat-card-content class="mt-2">
+                            @for (
+                                group of ruleOutboundGroups();
+                                track group.tag;
+                                let last = $last
+                            ) {
+                                <div class="mb-1 flex items-center gap-2">
+                                    <mat-icon
+                                        class="text-indigo-500"
+                                        style="
+                                            font-size: 18px;
+                                            width: 18px;
+                                            height: 18px;
+                                        "
+                                        >sell</mat-icon
+                                    >
+                                    <span
+                                        class="text-sm font-semibold text-indigo-700"
+                                        >{{ group.tag }}</span
+                                    >
+                                    <span class="text-xs text-gray-400"
+                                        >{{ group.rules.length }} rule{{
+                                            group.rules.length === 1 ? "" : "s"
+                                        }}</span
+                                    >
+                                </div>
+
+                                <div
+                                    class="grid grid-cols-1 gap-4 md:grid-cols-2"
+                                >
+                                    <!-- Left: rules -->
+                                    <div>
+                                        <h4
+                                            class="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500"
+                                        >
+                                            Routing Rules
+                                        </h4>
+                                        @for (
+                                            rule of group.rules;
+                                            track $index
+                                        ) {
+                                            <pre
+                                                class="mb-2 overflow-x-auto rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-700"
+                                                >{{ formatJson(rule) }}</pre
+                                            >
+                                        }
+                                    </div>
+
+                                    <!-- Right: outbound -->
+                                    <div>
+                                        <h4
+                                            class="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500"
+                                        >
+                                            Outbound
+                                        </h4>
+                                        @if (group.outbound) {
+                                            <pre
+                                                class="overflow-x-auto rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-700"
+                                                >{{
+                                                    formatJson(
+                                                        group.outbound,
+                                                        true
+                                                    )
+                                                }}</pre
+                                            >
+                                        } @else {
+                                            <p class="text-sm text-gray-400">
+                                                Outbound not found in config
+                                            </p>
+                                        }
+                                    </div>
+                                </div>
+
+                                @if (!last) {
+                                    <mat-divider class="my-4" />
+                                }
+                            }
+                        </mat-card-content>
+                    </mat-card>
+                }
+
+                <!-- Squad info -->
+                @if (result()!.allPassed && result()!.squadInfo) {
+                    <mat-card appearance="outlined" class="mt-6">
+                        <mat-card-header>
+                            <mat-card-title>Affected Squads</mat-card-title>
+                            <mat-card-subtitle>
+                                Squads that use this chain configuration
                             </mat-card-subtitle>
                         </mat-card-header>
                         <mat-card-content>
@@ -255,8 +331,7 @@ import {
                                         Internal Squads
                                     </h3>
                                     @for (
-                                        squad of result()!
-                                            .squadInfo!
+                                        squad of result()!.squadInfo!
                                             .internalSquads;
                                         track squad.uuid
                                     ) {
@@ -268,27 +343,18 @@ import {
                                                 style="font-size: 18px; width: 18px; height: 18px"
                                                 >group</mat-icon
                                             >
-                                            <span
-                                                class="font-medium"
-                                                >{{
-                                                    squad.name
-                                                }}</span
-                                            >
-                                            <span
-                                                class="text-gray-400"
+                                            <span class="font-medium">{{
+                                                squad.name
+                                            }}</span>
+                                            <span class="text-gray-400"
                                                 >&middot;
-                                                {{
-                                                    squad.membersCount
-                                                }}
+                                                {{ squad.membersCount }}
                                                 members</span
                                             >
                                         </div>
                                     } @empty {
-                                        <p
-                                            class="text-sm text-gray-400"
-                                        >
-                                            No internal squads
-                                            affected
+                                        <p class="text-sm text-gray-400">
+                                            No internal squads affected
                                         </p>
                                     }
                                 </div>
@@ -299,8 +365,7 @@ import {
                                         External Squads
                                     </h3>
                                     @for (
-                                        squad of result()!
-                                            .squadInfo!
+                                        squad of result()!.squadInfo!
                                             .externalSquads;
                                         track squad.uuid
                                     ) {
@@ -312,27 +377,18 @@ import {
                                                 style="font-size: 18px; width: 18px; height: 18px"
                                                 >groups</mat-icon
                                             >
-                                            <span
-                                                class="font-medium"
-                                                >{{
-                                                    squad.name
-                                                }}</span
-                                            >
-                                            <span
-                                                class="text-gray-400"
+                                            <span class="font-medium">{{
+                                                squad.name
+                                            }}</span>
+                                            <span class="text-gray-400"
                                                 >&middot;
-                                                {{
-                                                    squad.membersCount
-                                                }}
+                                                {{ squad.membersCount }}
                                                 members</span
                                             >
                                         </div>
                                     } @empty {
-                                        <p
-                                            class="text-sm text-gray-400"
-                                        >
-                                            No external squads use
-                                            this route ID
+                                        <p class="text-sm text-gray-400">
+                                            No external squads use this route ID
                                         </p>
                                     }
                                 </div>
@@ -363,11 +419,29 @@ export class ChainDiagnoseComponent {
     readonly error = signal<string | null>(null);
     readonly result = signal<DiagnoseResult | null>(null);
     readonly logs = signal<LogEntry[]>([]);
-    readonly configProfiles = signal<PanelConfigProfileSummary[]>(
-        []
-    );
+    readonly configProfiles = signal<PanelConfigProfileSummary[]>([]);
     readonly selectedProfileUuid = signal<string | null>(null);
     readonly vlessRouteId = signal<number | null>(null);
+
+    readonly ruleOutboundGroups = computed((): RuleOutboundGroup[] => {
+        const r = this.result();
+        if (!r || r.matchingRules.length === 0) return [];
+
+        const grouped = new Map<string, RuleOutboundGroup>();
+        for (const rule of r.matchingRules) {
+            const tag = rule.outboundTag ?? "(no tag)";
+            if (!grouped.has(tag)) {
+                grouped.set(tag, {
+                    tag,
+                    rules: [],
+                    outbound:
+                        r.matchedOutbounds.find((o) => o.tag === tag) ?? null,
+                });
+            }
+            grouped.get(tag)!.rules.push(rule);
+        }
+        return [...grouped.values()];
+    });
 
     readonly lastUpdated = computed(() => {
         const d = this.panelDataService.data();
@@ -392,12 +466,9 @@ export class ChainDiagnoseComponent {
         try {
             let data = this.panelDataService.data();
             if (!data) {
-                await this.panelDataService.refresh((s) =>
-                    this.status.set(s)
-                );
+                await this.panelDataService.refresh((s) => this.status.set(s));
                 data = this.panelDataService.data();
-                if (!data)
-                    throw new Error("Failed to fetch panel data");
+                if (!data) throw new Error("Failed to fetch panel data");
                 this.configProfiles.set(data.configProfiles);
             }
             const res = await this.diagnoseService.diagnose(
@@ -411,9 +482,7 @@ export class ChainDiagnoseComponent {
             this.syncQueryParams();
         } catch (e) {
             this.error.set(
-                e instanceof Error
-                    ? e.message
-                    : "Unknown error occurred"
+                e instanceof Error ? e.message : "Unknown error occurred"
             );
         } finally {
             this.loading.set(false);
@@ -426,9 +495,7 @@ export class ChainDiagnoseComponent {
         this.error.set(null);
 
         try {
-            await this.panelDataService.refresh((s) =>
-                this.status.set(s)
-            );
+            await this.panelDataService.refresh((s) => this.status.set(s));
             const data = this.panelDataService.data();
             if (data) {
                 this.configProfiles.set(data.configProfiles);
@@ -449,9 +516,7 @@ export class ChainDiagnoseComponent {
             this.syncQueryParams();
         } catch (e) {
             this.error.set(
-                e instanceof Error
-                    ? e.message
-                    : "Unknown error occurred"
+                e instanceof Error ? e.message : "Unknown error occurred"
             );
         } finally {
             this.loading.set(false);
@@ -528,6 +593,31 @@ export class ChainDiagnoseComponent {
         }
     }
 
+    formatJson(obj: unknown, outbound = false): string {
+        const replacer = (key: string, value: unknown) => {
+            if (key === "streamSettings") {
+                // For outbound settings, we set realitySettings.password field as "<REDACTED>"
+                if (
+                    typeof value === "object" &&
+                    value !== null &&
+                    "realitySettings" in value
+                ) {
+                    return {
+                        ...value,
+                        realitySettings: {
+                            ...(value.realitySettings as Object),
+                            password: "<REDACTED>",
+                        },
+                    };
+                }
+                return undefined; // Omit other fields
+            }
+            return value;
+        };
+
+        return JSON.stringify(obj, outbound ? replacer : null, 2);
+    }
+
     // -----------------------------------------------------------------------
     // Private
     // -----------------------------------------------------------------------
@@ -535,12 +625,8 @@ export class ChainDiagnoseComponent {
     private tryRestore(): void {
         if (!this.connectionConfig.isConfigured()) return;
 
-        const qId =
-            this.route.snapshot.queryParamMap.get(
-                "connection_id"
-            );
-        const activeId =
-            this.connectionConfig.activeProfileId();
+        const qId = this.route.snapshot.queryParamMap.get("connection_id");
+        const activeId = this.connectionConfig.activeProfileId();
         if (qId && qId === activeId) {
             this.panelDataService.restore();
         }
