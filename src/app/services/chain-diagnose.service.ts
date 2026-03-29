@@ -1,16 +1,19 @@
-import { inject, Injectable } from "@angular/core";
+import { Injectable } from "@angular/core";
 
-import { HostsApiService } from "./api/hosts-api.service";
-import { NodesApiService } from "./api/nodes-api.service";
-import { ConfigProfilesApiService } from "./api/config-profiles-api.service";
-import { ExternalSquadsApiService } from "./api/external-squads-api.service";
-import { InternalSquadsApiService } from "./api/internal-squads-api.service";
 import { LogEntry } from "../components/log-viewer/log-viewer.component";
 import {
     XRayConfig,
     XRayOutbound,
     XRayRoutingRule,
 } from "./proxy-chain.service";
+import {
+    PanelData,
+    PanelHost,
+    PanelNode,
+    PanelExternalSquad,
+    PanelInternalSquad,
+    PanelConfigProfileSummary,
+} from "./panel-data.service";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -46,50 +49,6 @@ export interface DiagnoseResult {
 }
 
 // ---------------------------------------------------------------------------
-// Internal data shapes
-// ---------------------------------------------------------------------------
-
-interface HostData {
-    uuid: string;
-    remark: string;
-    address: string;
-    port: number;
-    isDisabled: boolean;
-    vlessRouteId: number | null;
-    nodes: string[];
-    inbound: {
-        configProfileUuid: string | null;
-        configProfileInboundUuid: string | null;
-    };
-    excludedInternalSquads: string[];
-}
-
-interface NodeData {
-    uuid: string;
-    name: string;
-    address: string;
-    isDisabled: boolean;
-    countryCode: string;
-    configProfile: {
-        activeConfigProfileUuid: string | null;
-    };
-}
-
-interface InternalSquadData {
-    uuid: string;
-    name: string;
-    info: { membersCount: number; inboundsCount: number };
-    inbounds: { uuid: string; profileUuid: string; tag: string }[];
-}
-
-interface ExternalSquadData {
-    uuid: string;
-    name: string;
-    info: { membersCount: number };
-    hostOverrides: { vlessRouteId?: number | null } | null;
-}
-
-// ---------------------------------------------------------------------------
 // Log collector
 // ---------------------------------------------------------------------------
 
@@ -115,59 +74,40 @@ class LogCollector {
 
 @Injectable({ providedIn: "root" })
 export class ChainDiagnoseService {
-    private hostsApi = inject(HostsApiService);
-    private nodesApi = inject(NodesApiService);
-    private configProfilesApi = inject(ConfigProfilesApiService);
-    private externalSquadsApi = inject(ExternalSquadsApiService);
-    private internalSquadsApi = inject(InternalSquadsApiService);
-
     async diagnose(
         vlessRouteId: number,
         configProfileUuid: string,
+        data: PanelData,
         onStatus?: (status: string) => void
     ): Promise<DiagnoseResult> {
         const log = new LogCollector();
         const checks: DiagnoseCheckResult[] = [];
 
-        // ---- Fetch all data -----------------------------------------------
-        onStatus?.("Fetching data from Remnawave\u2026");
-        log.info("Fetching hosts, nodes, computed config, squads\u2026");
+        onStatus?.("Running checks\u2026");
 
-        const [hostsRes, nodesRes, computedRes, extSquadsRes, intSquadsRes] =
-            await Promise.all([
-                this.hostsApi.getAll(),
-                this.nodesApi.getAll(),
-                this.configProfilesApi.getComputedByUuid(
-                    configProfileUuid
-                ),
-                this.externalSquadsApi.getAll(),
-                this.internalSquadsApi.getAll(),
-            ]);
-
-        const hosts: HostData[] = hostsRes.response;
-        const nodes: NodeData[] = nodesRes.response;
-        const xrayConfig = computedRes.response.config as
-            | XRayConfig
-            | null;
-        const externalSquads: ExternalSquadData[] =
-            extSquadsRes.response.externalSquads;
-        const internalSquads: InternalSquadData[] =
-            intSquadsRes.response.internalSquads;
+        const hosts: PanelHost[] = data.hosts;
+        const configProfiles: Record<string, XRayConfig> = data.computedConfigs;
+        const nodes: PanelNode[] = data.nodes;
+        const xrayConfig: XRayConfig | undefined =
+            data.computedConfigs[configProfileUuid];
+        const externalSquads: PanelExternalSquad[] = data.externalSquads;
+        const internalSquads: PanelInternalSquad[] = data.internalSquads;
 
         log.info(
-            `Fetched ${hosts.length} hosts, ${nodes.length} nodes, ` +
+            `Panel data: ${hosts.length} hosts, ${nodes.length} nodes, ` +
                 `${externalSquads.length} external squads, ${internalSquads.length} internal squads.`
         );
 
         if (!xrayConfig) {
-            log.error("Computed config is empty for this profile.");
+            log.error("Computed config not available for this Config Profile.");
             checks.push({
                 id: "route-in-config",
                 title: "VLESS Route ID in Config",
                 status: "fail",
                 message:
-                    "The computed config for this profile is empty. " +
-                    "Ensure the config profile has a valid XRay configuration.",
+                    "The computed config for this Config Profile is not available. " +
+                    "Ensure the Config Profile is assigned to at least one node, " +
+                    "then refresh the panel data.",
             });
             return this.skipRemaining(checks, log);
         }
@@ -177,8 +117,6 @@ export class ChainDiagnoseService {
         log.debug(
             `Config has ${outbounds.length} outbound(s) and ${rules.length} routing rule(s).`
         );
-
-        onStatus?.("Running checks\u2026");
 
         // ---- Check 1: VLESS route ID exists in config ---------------------
         const matchingRules = rules.filter((r) =>
@@ -198,8 +136,8 @@ export class ChainDiagnoseService {
                     `Outbound tag(s): ${matchedOutboundTags.join(", ")}`
             );
             checks.push({
-                id: "route-in-config",
-                title: "VLESS Route ID in Config",
+                id: "route-in-config-profile",
+                title: "VLESS Route ID in Config Profile",
                 status: "pass",
                 message: `${matchingRules.length} routing rule(s) reference VLESS route ID ${vlessRouteId} \u2192 outbound(s): ${matchedOutboundTags.join(", ")}.`,
             });
@@ -208,12 +146,12 @@ export class ChainDiagnoseService {
                 `Check 1 FAIL: No routing rule references route ID ${vlessRouteId}.`
             );
             checks.push({
-                id: "route-in-config",
-                title: "VLESS Route ID in Config",
+                id: "route-in-config-profile",
+                title: "VLESS Route ID in Config Profile",
                 status: "fail",
                 message:
-                    `No routing rule in this config profile references VLESS route ID ${vlessRouteId}. ` +
-                    "Verify the route ID is correct, or check that the config profile " +
+                    `No routing rule in this Config Profile references VLESS route ID ${vlessRouteId}. ` +
+                    "Verify the route ID is correct, or check that the Config Profile " +
                     "has routing rules configured for this chain.",
             });
             return this.skipRemaining(checks, log);
@@ -222,12 +160,9 @@ export class ChainDiagnoseService {
         // ---- Check 2: At least one enabled node has this profile ----------
         const profileNodes = nodes.filter(
             (n) =>
-                n.configProfile?.activeConfigProfileUuid ===
-                configProfileUuid
+                n.configProfile?.activeConfigProfileUuid === configProfileUuid
         );
-        const enabledProfileNodes = profileNodes.filter(
-            (n) => !n.isDisabled
-        );
+        const enabledProfileNodes = profileNodes.filter((n) => !n.isDisabled);
 
         if (enabledProfileNodes.length > 0) {
             log.info(
@@ -237,7 +172,7 @@ export class ChainDiagnoseService {
                 log.debug(`  Node "${n.name}" (${n.address})`);
             }
             checks.push({
-                id: "node-has-profile",
+                id: "node-has-config-profile",
                 title: "Node Has Config Profile & Is Enabled",
                 status: "pass",
                 message: `${enabledProfileNodes.length} enabled node(s) use this config profile (${profileNodes.length} total).`,
@@ -247,23 +182,23 @@ export class ChainDiagnoseService {
                 `Check 2 WARN: ${profileNodes.length} node(s) have this profile but ALL are disabled.`
             );
             checks.push({
-                id: "node-has-profile",
+                id: "node-has-config-profile",
                 title: "Node Has Config Profile & Is Enabled",
                 status: "warn",
                 message:
-                    `${profileNodes.length} node(s) use this config profile, but all are disabled. ` +
+                    `${profileNodes.length} node(s) use this Config Profile, but all are disabled. ` +
                     "Enable at least one node for the chain to function.",
             });
         } else {
             log.error(
-                "Check 2 FAIL: No nodes have this config profile assigned."
+                "Check 2 FAIL: No nodes have this Config Profile assigned."
             );
             checks.push({
-                id: "node-has-profile",
+                id: "node-has-config-profile",
                 title: "Node Has Config Profile & Is Enabled",
                 status: "fail",
                 message:
-                    "No nodes are assigned to this config profile. " +
+                    "No nodes are assigned to this Config Profile. " +
                     "Assign the profile to at least one node in the Remnawave panel.",
             });
             return this.skipRemaining(checks, log);
@@ -296,13 +231,11 @@ export class ChainDiagnoseService {
         }
 
         // ---- Check 4: Outbound points to existing, enabled host -----------
-        const matchedHosts: HostData[] = [];
+        const matchedConfigProfiles: Record<string, XRayConfig> = {};
         for (const tag of matchedOutboundTags) {
             const ob = outbounds.find((o) => o.tag === tag);
             if (!ob) {
-                log.debug(
-                    `  Outbound "${tag}" not found in outbounds list.`
-                );
+                log.debug(`  Outbound "${tag}" not found in outbounds list.`);
                 continue;
             }
             const addrs = this.outboundServerAddresses(ob);
@@ -310,118 +243,140 @@ export class ChainDiagnoseService {
                 `  Outbound "${tag}": ${addrs.length} server address(es): ${addrs.map((a) => a.address).join(", ")}`
             );
             for (const addr of addrs) {
-                const host = hosts.find(
-                    (h) => h.address === addr.address
+                // get list of configprofiles with this address
+                const configProfilesForAddress = Object.entries(
+                    configProfiles
+                ).filter(([, cp]) =>
+                    cp.outbounds?.some((o) =>
+                        this.outboundServerAddresses(o).some(
+                            (a) => a.address === addr.address
+                        )
+                    )
                 );
-                if (host) {
-                    matchedHosts.push(host);
-                    log.debug(
-                        `  Matched host "${host.remark}" (${host.address}), disabled=${host.isDisabled}`
+                if (configProfilesForAddress.length > 0) {
+                    Object.assign(
+                        matchedConfigProfiles,
+                        Object.fromEntries(configProfilesForAddress)
                     );
+
+                    configProfilesForAddress.forEach(([id]) => {
+                        log.debug(
+                            `  Matched Config Profile "${this.getConfigProfileName(id, data.configProfiles)} (${id})" (${addr.address})`
+                        );
+                    });
                 }
             }
         }
 
-        const enabledMatchedHosts = matchedHosts.filter(
-            (h) => !h.isDisabled
-        );
-
-        if (enabledMatchedHosts.length > 0) {
+        if (Object.keys(matchedConfigProfiles).length > 0) {
             log.info(
-                `Check 4 PASS: ${enabledMatchedHosts.length} enabled host(s) match outbound addresses.`
+                `Check 4 PASS: ${Object.keys(matchedConfigProfiles).length} config profiles contain the matched outbound addresses.`
             );
             checks.push({
-                id: "outbound-valid-host",
-                title: "Outbound Points to Valid Host",
+                id: "config-profiles-exist",
+                title: "There are Config Profiles for Outbounds' addresses",
                 status: "pass",
-                message: `Outbound address(es) match ${enabledMatchedHosts.length} enabled host(s): ${enabledMatchedHosts.map((h) => `"${h.remark}"`).join(", ")}.`,
+                message: `There are ${Object.keys(matchedConfigProfiles).length} config profile(s) that contain the matched outbound addresses: ${Object.keys(
+                    matchedConfigProfiles
+                )
+                    .map(
+                        (cp) =>
+                            `"${this.getConfigProfileName(cp, data.configProfiles)}"`
+                    )
+                    .join(", ")}.`,
             });
-        } else if (matchedHosts.length > 0) {
-            log.error(
-                `Check 4 FAIL: ${matchedHosts.length} host(s) match but all are disabled.`
-            );
-            checks.push({
-                id: "outbound-valid-host",
-                title: "Outbound Points to Valid Host",
-                status: "fail",
-                message:
-                    `${matchedHosts.length} host(s) match the outbound address but are all disabled. ` +
-                    "Enable the target host in the Remnawave panel.",
-            });
-            return this.skipRemaining(checks, log);
         } else {
             log.error(
-                "Check 4 FAIL: No host address matches the outbound server addresses."
+                "Check 4 FAIL: No config profiles contain the matched outbound addresses."
             );
-            const obAddrs = matchedOutboundTags.flatMap((tag) => {
-                const ob = outbounds.find((o) => o.tag === tag);
-                return ob
-                    ? this.outboundServerAddresses(ob).map(
-                          (a) => a.address
-                      )
-                    : [];
-            });
             checks.push({
-                id: "outbound-valid-host",
-                title: "Outbound Points to Valid Host",
+                id: "config-profiles-exist",
+                title: "There are Config Profiles for Outbounds' addresses",
                 status: "fail",
                 message:
-                    `No host has an address matching the outbound destination(s): ${obAddrs.join(", ") || "(none)"}. ` +
-                    "Create a host with a matching address, or verify the outbound configuration.",
+                    "None of the outbound server addresses matched any config profile's outbounds. " +
+                    "Ensure that at least one config profile contains outbounds with the server addresses used by the routing rules for this chain.",
             });
             return this.skipRemaining(checks, log);
         }
 
-        // ---- Check 5: Host's config profile matches -----------------------
-        const hostsWithCorrectProfile = enabledMatchedHosts.filter(
-            (h) =>
-                h.inbound.configProfileUuid === configProfileUuid
-        );
-        const hostsWithWrongProfile = enabledMatchedHosts.filter(
-            (h) =>
-                h.inbound.configProfileUuid !== configProfileUuid
+        // ---- Check 5: There are Hosts with this VLESS route ID -----------------------
+        const hostsWithRouteId = hosts.filter(
+            (h) => h.vlessRouteId === vlessRouteId
         );
 
-        if (hostsWithCorrectProfile.length > 0) {
-            if (hostsWithWrongProfile.length === 0) {
-                log.info(
-                    "Check 5 PASS: All matched hosts belong to the selected config profile."
-                );
-                checks.push({
-                    id: "host-profile-match",
-                    title: "Host Config Profile Matches",
-                    status: "pass",
-                    message:
-                        "All matched hosts are assigned to the selected config profile.",
-                });
-            } else {
-                log.warn(
-                    `Check 5 WARN: ${hostsWithCorrectProfile.length} host(s) match, but ${hostsWithWrongProfile.length} host(s) have a different profile.`
-                );
-                checks.push({
-                    id: "host-profile-match",
-                    title: "Host Config Profile Matches",
-                    status: "warn",
-                    message:
-                        `${hostsWithCorrectProfile.length} host(s) match the selected profile, ` +
-                        `but ${hostsWithWrongProfile.length} host(s) are assigned to a different profile: ` +
-                        `${hostsWithWrongProfile.map((h) => `"${h.remark}"`).join(", ")}. ` +
-                        "Reassign them in the Remnawave panel if they should use this profile.",
-                });
-            }
-        } else {
-            log.error(
-                "Check 5 FAIL: None of the matched hosts belong to the selected config profile."
+        hostsWithRouteId.forEach((h) => {
+            log.debug(
+                `  Host "${h.remark}" (${h.address}) has VLESS route ID ${vlessRouteId}.`
+            );
+        });
+
+        if (hostsWithRouteId.length > 0) {
+            log.info(
+                `Check 5 PASS: ${hostsWithRouteId.length} host(s) have this VLESS route ID.`
             );
             checks.push({
                 id: "host-profile-match",
-                title: "Host Config Profile Matches",
+                title: "Hosts contain VLESS route ID",
+                status: "pass",
+                message: `${hostsWithRouteId.length} host(s) have this VLESS route ID in their config profile assignment.`,
+            });
+        } else {
+            log.error(
+                `Check 5 FAIL: No hosts have this VLESS route ID in their config profile assignment.`
+            );
+            checks.push({
+                id: "host-profile-match",
+                title: "Hosts contain VLESS route ID",
                 status: "fail",
                 message:
-                    "The matched host(s) are assigned to a different config profile. " +
-                    "Update the host's inbound config profile in the Remnawave panel to match.",
+                    `No hosts have this VLESS route ID: ${vlessRouteId} - in their config profile assignment. ` +
+                    "Ensure that at least one host is assigned to a config profile that contains this route ID, " +
+                    "and that the host is enabled.",
             });
             return this.skipRemaining(checks, log);
+        }
+
+        // ---- Check 6: The selected Hosts are enabled -----------------------
+
+        const enabledHostsWithRouteId = hostsWithRouteId.filter(
+            (h) => !h.isDisabled
+        );
+
+        hostsWithRouteId.forEach((h) => {
+            if (h.isDisabled) {
+                log.debug(
+                    `  Host "${h.remark}" (${h.address}) with VLESS route ID ${vlessRouteId} is disabled.`
+                );
+            } else {
+                log.debug(
+                    `  Host "${h.remark}" (${h.address}) with VLESS route ID ${vlessRouteId} is enabled.`
+                );
+            }
+        });
+
+        if (enabledHostsWithRouteId.length > 0) {
+            log.info(
+                `Check 6 PASS: ${enabledHostsWithRouteId.length} host(s) with this VLESS route ID are enabled.`
+            );
+            checks.push({
+                id: "host-enabled",
+                title: "Hosts with VLESS route ID are enabled",
+                status: "pass",
+                message: `${enabledHostsWithRouteId.length} host(s) with this VLESS route ID are enabled.`,
+            });
+        } else {
+            log.error(
+                `Check 6 FAIL: All ${hostsWithRouteId.length} host(s) with this VLESS route ID are disabled.`
+            );
+            checks.push({
+                id: "host-enabled",
+                title: "Hosts with VLESS route ID are enabled",
+                status: "fail",
+                message:
+                    `No host(s) with this VLESS route ID are enabled. ` +
+                    `Enable at least one of these hosts with VLESS route ID: ${vlessRouteId} - for the chain to function.`,
+            });
         }
 
         // ---- All checks passed — compute squad info -----------------------
@@ -432,7 +387,7 @@ export class ChainDiagnoseService {
         let squadInfo: SquadInfo | null = null;
         if (allPassed) {
             squadInfo = this.computeSquadInfo(
-                enabledMatchedHosts,
+                // enabledMatchedHosts,
                 configProfileUuid,
                 vlessRouteId,
                 internalSquads,
@@ -442,7 +397,7 @@ export class ChainDiagnoseService {
         }
 
         log.info(
-            `--- Done. ${checks.filter((c) => c.status === "pass").length}/5 passed, ` +
+            `--- Done. ${checks.filter((c) => c.status === "pass").length}/${checks.length} passed, ` +
                 `${checks.filter((c) => c.status === "warn").length} warning(s), ` +
                 `${checks.filter((c) => c.status === "fail").length} failure(s). ---`
         );
@@ -464,18 +419,20 @@ export class ChainDiagnoseService {
         log: LogCollector
     ): DiagnoseResult {
         const allIds = [
-            "route-in-config",
-            "node-has-profile",
+            "route-in-config-profile",
+            "node-has-config-profile",
             "routing-consistent",
-            "outbound-valid-host",
+            "config-profiles-exist",
             "host-profile-match",
+            "host-enabled",
         ];
         const titles = [
-            "VLESS Route ID in Config",
-            "Node Has Config Profile & Is Enabled",
-            "Routing Rules Consistency",
-            "Outbound Points to Valid Host",
-            "Host Config Profile Matches",
+            "VLESS route ID in Config Profile",
+            "Nodes have Config Profile & are Enabled",
+            "Routing rules consistency",
+            "There are Config Profiles for Outbounds' addresses",
+            "Hosts contain VLESS route ID",
+            "Hosts with VLESS route ID are enabled",
         ];
         const existing = new Set(checks.map((c) => c.id));
         for (let i = 0; i < allIds.length; i++) {
@@ -484,8 +441,7 @@ export class ChainDiagnoseService {
                     id: allIds[i],
                     title: titles[i],
                     status: "skipped",
-                    message:
-                        "Skipped because a prior check failed.",
+                    message: "Skipped because a prior check failed.",
                 });
             }
         }
@@ -499,27 +455,22 @@ export class ChainDiagnoseService {
     }
 
     private computeSquadInfo(
-        matchedHosts: HostData[],
+        // matchedHosts: PanelHost[],
         configProfileUuid: string,
         vlessRouteId: number,
-        internalSquads: InternalSquadData[],
-        externalSquads: ExternalSquadData[],
+        internalSquads: PanelInternalSquad[],
+        externalSquads: PanelExternalSquad[],
         log: LogCollector
     ): SquadInfo {
-        // Internal squads whose inbounds reference the selected profile,
-        // excluding those in any matched host's excludedInternalSquads
-        const excludedIds = new Set(
-            matchedHosts.flatMap((h) => h.excludedInternalSquads)
-        );
+        const excludedIds = new Set();
+        // matchedHosts.flatMap((h) => h.excludedInternalSquads)
 
         const matchedInternal = internalSquads.filter(
             (s) =>
-                s.inbounds.some(
-                    (ib) => ib.profileUuid === configProfileUuid
-                ) && !excludedIds.has(s.uuid)
+                s.inbounds.some((ib) => ib.profileUuid === configProfileUuid) &&
+                !excludedIds.has(s.uuid)
         );
 
-        // External squads with hostOverrides.vlessRouteId matching
         const matchedExternal = externalSquads.filter(
             (s) => s.hostOverrides?.vlessRouteId === vlessRouteId
         );
@@ -528,10 +479,14 @@ export class ChainDiagnoseService {
             `Squad analysis: ${matchedInternal.length} internal squad(s), ${matchedExternal.length} external squad(s) affected.`
         );
         for (const s of matchedInternal) {
-            log.debug(`  Internal: "${s.name}" (${s.info.membersCount} members)`);
+            log.debug(
+                `  Internal: "${s.name}" (${s.info.membersCount} members)`
+            );
         }
         for (const s of matchedExternal) {
-            log.debug(`  External: "${s.name}" (${s.info.membersCount} members)`);
+            log.debug(
+                `  External: "${s.name}" (${s.info.membersCount} members)`
+            );
         }
 
         return {
@@ -552,11 +507,7 @@ export class ChainDiagnoseService {
         rule: XRayRoutingRule,
         routeId: number
     ): boolean {
-        const s = String(routeId);
-        if (rule.outboundTag?.includes(s)) return true;
-        if (rule.user?.some((u) => u.includes(s))) return true;
-        if (rule.inboundTag?.some((t) => t.includes(s))) return true;
-        return false;
+        return rule.vlessRoute === String(routeId) ? true : false;
     }
 
     private outboundServerAddresses(
@@ -570,5 +521,12 @@ export class ChainDiagnoseService {
             out.push({ address: s.address, port: s.port });
         }
         return out;
+    }
+
+    private getConfigProfileName(
+        cpid: string,
+        configProfiles: PanelConfigProfileSummary[]
+    ): string {
+        return configProfiles.find((cp) => cp.uuid === cpid)?.name || cpid;
     }
 }

@@ -1,10 +1,8 @@
 import { inject, Injectable } from "@angular/core";
 
-import { HostsApiService } from "./api/hosts-api.service";
-import { NodesApiService } from "./api/nodes-api.service";
-import { ConfigProfilesApiService } from "./api/config-profiles-api.service";
 import { DnsService } from "./dns.service";
 import { LogEntry } from "../components/log-viewer/log-viewer.component";
+import { PanelData, PanelHost, PanelNode } from "./panel-data.service";
 
 // ---------------------------------------------------------------------------
 // XRay config types (for parsing the untyped `config` field)
@@ -33,6 +31,7 @@ export interface XRayRoutingRule {
     outboundTag?: string;
     inboundTag?: string[];
     user?: string[];
+    vlessRoute?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,39 +76,6 @@ export interface ChainDetectionResult {
 }
 
 // ---------------------------------------------------------------------------
-// Internal helper types (subset of API response fields we actually use)
-// ---------------------------------------------------------------------------
-
-interface HostData {
-    uuid: string;
-    remark: string;
-    address: string;
-    port: number;
-    vlessRouteId: number | null;
-    nodes: string[];
-    inbound: {
-        configProfileUuid: string | null;
-        configProfileInboundUuid: string | null;
-    };
-}
-
-interface NodeData {
-    uuid: string;
-    name: string;
-    address: string;
-    countryCode: string;
-    configProfile: {
-        activeConfigProfileUuid: string | null;
-    };
-}
-
-interface ConfigData {
-    uuid: string;
-    name: string;
-    config?: unknown;
-}
-
-// ---------------------------------------------------------------------------
 // Protocols that never form chain links
 // ---------------------------------------------------------------------------
 
@@ -142,51 +108,52 @@ class LogCollector {
 
 @Injectable({ providedIn: "root" })
 export class ProxyChainService {
-    private hostsApi = inject(HostsApiService);
-    private nodesApi = inject(NodesApiService);
-    private configProfilesApi = inject(ConfigProfilesApiService);
     private dns = inject(DnsService);
 
     async detectChains(
+        data: PanelData,
         onStatus?: (status: string) => void
     ): Promise<ChainDetectionResult> {
         const warnings: string[] = [];
         const log = new LogCollector();
 
-        // ---- 1. Fetch all data in parallel --------------------------------
-        onStatus?.("Fetching hosts, nodes, and config profiles\u2026");
-        log.info("Fetching hosts, nodes, and config profiles\u2026");
+        // ---- 1. Read data from PanelData ----------------------------------
+        const hosts = data.hosts;
+        const nodes = data.nodes;
 
-        const [hostsRes, nodesRes, configsRes] = await Promise.all([
-            this.hostsApi.getAll(),
-            this.nodesApi.getAll(),
-            this.configProfilesApi.getAll(),
-        ]);
-
-        const hosts: HostData[] = hostsRes.response;
-        const nodes: NodeData[] = nodesRes.response;
-        const configs: ConfigData[] =
-            configsRes.response.configProfiles;
+        const configMap = new Map<string, XRayConfig>();
+        const configNameMap = new Map<string, string>();
+        for (const c of data.configProfiles) {
+            configNameMap.set(c.uuid, c.name);
+        }
+        for (const [uuid, config] of Object.entries(data.computedConfigs)) {
+            configMap.set(uuid, config);
+        }
 
         log.info(
-            `Fetched ${hosts.length} hosts, ${nodes.length} nodes, ${configs.length} config profiles.`
+            `Panel data: ${hosts.length} hosts, ${nodes.length} nodes, ${configMap.size} computed config(s).`
         );
 
+        for (const [uuid, xray] of configMap) {
+            const name = configNameMap.get(uuid) ?? uuid;
+            log.debug(
+                `Config "${name}" (${uuid}): ${xray.outbounds?.length ?? 0} outbounds, ${xray.routing?.rules?.length ?? 0} routing rules.`
+            );
+        }
+
         // ---- 2. Filter hosts that participate in chaining -----------------
-        const chainHosts = hosts.filter(
-            (h) => h.vlessRouteId != null
-        );
+        const chainHosts = hosts.filter((h) => h.vlessRouteId != null);
         log.info(
             `${chainHosts.length} of ${hosts.length} hosts have a VLESS route ID.`
         );
 
         if (chainHosts.length === 0) {
-            log.warn("No hosts with a VLESS route ID — nothing to detect.");
+            log.warn(
+                "No hosts with a VLESS route ID \u2014 nothing to detect."
+            );
             return {
                 chains: [],
-                warnings: [
-                    "No hosts with a VLESS route ID were found.",
-                ],
+                warnings: ["No hosts with a VLESS route ID were found."],
                 logs: log.entries,
             };
         }
@@ -197,62 +164,7 @@ export class ProxyChainService {
             );
         }
 
-        // ---- 3. Fetch computed configs for each profile --------------------
-        const profileUuids = new Set<string>();
-        for (const n of nodes) {
-            const id = n.configProfile?.activeConfigProfileUuid;
-            if (id) profileUuids.add(id);
-        }
-
-        log.info(
-            `${profileUuids.size} unique config profile(s) in use by nodes. Fetching computed configs\u2026`
-        );
-        onStatus?.("Fetching computed config profiles\u2026");
-
-        const configMap = new Map<string, XRayConfig>();
-        const configNameMap = new Map<string, string>();
-        for (const c of configs) {
-            configNameMap.set(c.uuid, c.name);
-        }
-
-        const computedResults = await Promise.allSettled(
-            [...profileUuids].map(async (uuid) => {
-                const res =
-                    await this.configProfilesApi.getComputedByUuid(
-                        uuid
-                    );
-                return { uuid, profile: res.response };
-            })
-        );
-
-        for (const r of computedResults) {
-            if (r.status === "fulfilled") {
-                const { uuid, profile } = r.value;
-                const xray = profile.config as
-                    | XRayConfig
-                    | null;
-                const name =
-                    configNameMap.get(uuid) ?? profile.name ?? uuid;
-                if (xray) {
-                    configMap.set(uuid, xray);
-                    const obAddrs =
-                        this.collectOutboundAddresses(xray);
-                    log.debug(
-                        `Computed config "${name}" (${uuid}): ${xray.outbounds?.length ?? 0} outbounds, ${xray.routing?.rules?.length ?? 0} routing rules, ${obAddrs.length} outbound server addresses.`
-                    );
-                } else {
-                    log.debug(
-                        `Computed config "${name}" (${uuid}): empty config body.`
-                    );
-                }
-            } else {
-                log.warn(
-                    `Failed to fetch computed config for profile ${r.reason}`
-                );
-            }
-        }
-
-        // ---- 4. Collect domains & resolve DNS -----------------------------
+        // ---- 3. Collect domains & resolve DNS -----------------------------
         onStatus?.("Resolving domain addresses\u2026");
 
         const domainsToResolve = new Set<string>();
@@ -264,13 +176,9 @@ export class ProxyChainService {
             }
         }
 
-        log.info(
-            `Resolving ${domainsToResolve.size} unique domain(s)\u2026`
-        );
+        log.info(`Resolving ${domainsToResolve.size} unique domain(s)\u2026`);
 
-        const dnsMap = await this.dns.resolveAll([
-            ...domainsToResolve,
-        ]);
+        const dnsMap = await this.dns.resolveAll([...domainsToResolve]);
 
         for (const [domain, ips] of dnsMap) {
             if (ips.length > 0) {
@@ -280,9 +188,9 @@ export class ProxyChainService {
             }
         }
 
-        // ---- 5. Build lookup maps -----------------------------------------
-        const nodeByUuid = new Map<string, NodeData>();
-        const nodesByIp = new Map<string, NodeData[]>();
+        // ---- 4. Build lookup maps -----------------------------------------
+        const nodeByUuid = new Map<string, PanelNode>();
+        const nodesByIp = new Map<string, PanelNode[]>();
 
         for (const node of nodes) {
             nodeByUuid.set(node.uuid, node);
@@ -301,7 +209,7 @@ export class ProxyChainService {
             `Built IP lookup with ${nodesByIp.size} unique IP(s) mapping to nodes.`
         );
 
-        // ---- 6. Build chains ----------------------------------------------
+        // ---- 5. Build chains ----------------------------------------------
         onStatus?.("Analyzing proxy chains\u2026");
         log.info("--- Starting chain analysis ---");
         const chains: ProxyChain[] = [];
@@ -334,16 +242,13 @@ export class ProxyChainService {
 
             const hops: ChainNodeHop[] = [];
             const visited = new Set<string>();
-            let current: NodeData | undefined = entryNode;
+            let current: PanelNode | undefined = entryNode;
 
             while (current && !visited.has(current.uuid)) {
                 visited.add(current.uuid);
 
-                const cfgUuid =
-                    current.configProfile?.activeConfigProfileUuid;
-                const config = cfgUuid
-                    ? configMap.get(cfgUuid)
-                    : null;
+                const cfgUuid = current.configProfile?.activeConfigProfileUuid;
+                const config = cfgUuid ? configMap.get(cfgUuid) : null;
 
                 if (cfgUuid) {
                     log.debug(
@@ -356,7 +261,7 @@ export class ProxyChainService {
                 }
 
                 let matchedOutbound: ChainOutbound | null = null;
-                let nextNode: NodeData | undefined;
+                let nextNode: PanelNode | undefined;
 
                 if (config) {
                     const hop = this.findNextHop(
@@ -386,8 +291,7 @@ export class ProxyChainService {
             }
 
             const entryCfgUuid =
-                entryNode.configProfile?.activeConfigProfileUuid ??
-                "unknown";
+                entryNode.configProfile?.activeConfigProfileUuid ?? "unknown";
 
             if (hops.length >= 2) {
                 chains.push({
@@ -402,12 +306,9 @@ export class ProxyChainService {
                     hops,
                     configProfileUuid: entryCfgUuid,
                     configProfileName:
-                        configNameMap.get(entryCfgUuid) ??
-                        "Unknown Profile",
+                        configNameMap.get(entryCfgUuid) ?? "Unknown Profile",
                 });
-                const path = hops
-                    .map((h) => `"${h.name}"`)
-                    .join(" \u2192 ");
+                const path = hops.map((h) => `"${h.name}"`).join(" \u2192 ");
                 log.info(`  \u2714 Chain built: ${path}`);
             } else if (hops.length === 1 && hops[0].outbound) {
                 const msg =
@@ -435,21 +336,12 @@ export class ProxyChainService {
     // -----------------------------------------------------------------------
 
     private findEntryNode(
-        host: HostData,
-        nodeByUuid: Map<string, NodeData>,
-        nodesByIp: Map<string, NodeData[]>,
+        host: PanelHost,
+        nodeByUuid: Map<string, PanelNode>,
+        nodesByIp: Map<string, PanelNode[]>,
         dnsMap: Map<string, string[]>,
         log: LogCollector
-    ): NodeData | undefined {
-        // Strategy 1 – direct host→node assignment
-        // Will not work because this field is not strictly enforced to match actual node assignments
-        // it is just a user setting that can be left blank or filled with any node UUID
-        // for (const id of host.nodes) {
-        //     const n = nodeByUuid.get(id);
-        //     if (n) return n;
-        // }
-
-        // Strategy 2 – DNS-based matching
+    ): PanelNode | undefined {
         const hostname = this.dns.extractHostname(host.address);
         const ips = this.dns.isIpAddress(hostname)
             ? [hostname]
@@ -479,11 +371,11 @@ export class ProxyChainService {
         config: XRayConfig,
         vlessRouteId: number,
         nodeName: string,
-        nodesByIp: Map<string, NodeData[]>,
+        nodesByIp: Map<string, PanelNode[]>,
         dnsMap: Map<string, string[]>,
         visited: Set<string>,
         log: LogCollector
-    ): { outbound: ChainOutbound; node: NodeData } | null {
+    ): { outbound: ChainOutbound; node: PanelNode } | null {
         const outbounds = config.outbounds ?? [];
         const rules = config.routing?.rules ?? [];
 
@@ -494,17 +386,14 @@ export class ProxyChainService {
         // Strategy 1 – match a routing rule by vlessRouteId
         for (const rule of rules) {
             if (!rule.outboundTag) continue;
-            if (!this.ruleMatchesRouteId(rule, vlessRouteId))
-                continue;
+            if (!this.ruleMatchesRouteId(rule, vlessRouteId)) continue;
 
             log.debug(
                 `  Routing rule matched: outboundTag="${rule.outboundTag}" ` +
                     `(user=[${(rule.user ?? []).join(",")}], inboundTag=[${(rule.inboundTag ?? []).join(",")}])`
             );
 
-            const ob = outbounds.find(
-                (o) => o.tag === rule.outboundTag
-            );
+            const ob = outbounds.find((o) => o.tag === rule.outboundTag);
             if (!ob) {
                 log.debug(
                     `  Outbound "${rule.outboundTag}" referenced by rule but not found in outbounds list.`
@@ -561,11 +450,11 @@ export class ProxyChainService {
 
     private resolveOutboundToNode(
         outbound: XRayOutbound,
-        nodesByIp: Map<string, NodeData[]>,
+        nodesByIp: Map<string, PanelNode[]>,
         dnsMap: Map<string, string[]>,
         visited: Set<string>,
         log: LogCollector
-    ): { outbound: ChainOutbound; node: NodeData } | null {
+    ): { outbound: ChainOutbound; node: PanelNode } | null {
         for (const addr of this.outboundServerAddresses(outbound)) {
             const hostname = this.dns.extractHostname(addr.address);
             const ips = this.dns.isIpAddress(hostname)
@@ -575,9 +464,7 @@ export class ProxyChainService {
             for (const ip of ips) {
                 const bucket = nodesByIp.get(ip);
                 if (!bucket) continue;
-                const node = bucket.find(
-                    (n) => !visited.has(n.uuid)
-                );
+                const node = bucket.find((n) => !visited.has(n.uuid));
                 if (node) {
                     log.info(
                         `  Outbound "${outbound.tag}" (${addr.address}:${addr.port}) \u2192 IP ${ip} \u2192 node "${node.name}"`
@@ -585,8 +472,7 @@ export class ProxyChainService {
                     return {
                         outbound: {
                             tag: outbound.tag ?? "unknown",
-                            protocol:
-                                outbound.protocol ?? "unknown",
+                            protocol: outbound.protocol ?? "unknown",
                             address: addr.address,
                             port: addr.port,
                         },
@@ -598,7 +484,6 @@ export class ProxyChainService {
         return null;
     }
 
-    /** Extracts all server addresses from every outbound in a config. */
     private collectOutboundAddresses(
         config: XRayConfig
     ): { address: string; port: number }[] {
@@ -609,7 +494,6 @@ export class ProxyChainService {
         return out;
     }
 
-    /** Extracts server addresses from a single outbound's settings. */
     private outboundServerAddresses(
         ob: XRayOutbound
     ): { address: string; port: number }[] {

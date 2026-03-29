@@ -1,11 +1,12 @@
 import {
     ChangeDetectionStrategy,
     Component,
+    computed,
     inject,
     signal,
 } from "@angular/core";
 import { FormsModule } from "@angular/forms";
-import { RouterLink } from "@angular/router";
+import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { MatButtonModule } from "@angular/material/button";
 import { MatCardModule } from "@angular/material/card";
 import { MatFormFieldModule } from "@angular/material/form-field";
@@ -19,17 +20,15 @@ import {
     LogEntry,
 } from "../../components/log-viewer/log-viewer.component";
 import { ConnectionConfigService } from "../../services/connection-config.service";
-import { ConfigProfilesApiService } from "../../services/api/config-profiles-api.service";
+import {
+    PanelDataService,
+    PanelConfigProfileSummary,
+} from "../../services/panel-data.service";
 import {
     ChainDiagnoseService,
     DiagnoseResult,
     CheckStatus,
 } from "../../services/chain-diagnose.service";
-
-interface ProfileOption {
-    uuid: string;
-    name: string;
-}
 
 @Component({
     selector: "app-chain-diagnose",
@@ -51,8 +50,8 @@ interface ProfileOption {
             Chain Diagnostics
         </h1>
         <p class="mb-6 text-sm text-gray-500">
-            Validate that a VLESS route ID is correctly wired within a
-            config profile
+            Validate that a VLESS route ID is correctly wired within
+            a config profile
         </p>
 
         @if (!connectionConfig.isConfigured()) {
@@ -116,9 +115,9 @@ interface ProfileOption {
                                     </mat-option>
                                 }
                             </mat-select>
-                            @if (loadingProfiles()) {
+                            @if (panelDataService.loading()) {
                                 <mat-hint
-                                    >Loading profiles\u2026</mat-hint
+                                    >Loading data\u2026</mat-hint
                                 >
                             }
                         </mat-form-field>
@@ -141,7 +140,22 @@ interface ProfileOption {
                             }
                             Run Diagnose
                         </button>
+
+                        <button
+                            mat-stroked-button
+                            (click)="refreshData()"
+                            [disabled]="loading()"
+                            class="mb-[22px]"
+                        >
+                            <mat-icon>refresh</mat-icon>
+                            Refresh Data
+                        </button>
                     </div>
+                    @if (lastUpdated()) {
+                        <p class="text-xs text-gray-400">
+                            Last updated {{ lastUpdated() }}
+                        </p>
+                    }
                 </mat-card-content>
             </mat-card>
 
@@ -170,7 +184,6 @@ interface ProfileOption {
                         track check.id;
                         let last = $last
                     ) {
-                        <!-- Check card -->
                         <div
                             class="flex items-start gap-4 rounded-lg border p-4 {{ borderColor(check.status) }}"
                         >
@@ -194,9 +207,10 @@ interface ProfileOption {
                                     >
                                     <span
                                         class="rounded px-2 py-0.5 text-xs font-semibold uppercase {{ badgeClass(check.status) }}"
+                                        >{{
+                                            check.status
+                                        }}</span
                                     >
-                                        {{ check.status }}
-                                    </span>
                                 </div>
                                 <p
                                     class="mt-1 text-sm text-gray-600"
@@ -205,8 +219,6 @@ interface ProfileOption {
                                 </p>
                             </div>
                         </div>
-
-                        <!-- Connector line -->
                         @if (!last) {
                             <div
                                 class="ml-5 h-4 w-px bg-gray-300"
@@ -236,7 +248,6 @@ interface ProfileOption {
                             <div
                                 class="mt-2 grid grid-cols-1 gap-6 md:grid-cols-2"
                             >
-                                <!-- Internal -->
                                 <div>
                                     <h3
                                         class="mb-2 text-sm font-semibold uppercase tracking-wider text-gray-500"
@@ -254,11 +265,7 @@ interface ProfileOption {
                                         >
                                             <mat-icon
                                                 class="text-indigo-500"
-                                                style="
-                                                    font-size: 18px;
-                                                    width: 18px;
-                                                    height: 18px;
-                                                "
+                                                style="font-size: 18px; width: 18px; height: 18px"
                                                 >group</mat-icon
                                             >
                                             <span
@@ -285,7 +292,6 @@ interface ProfileOption {
                                         </p>
                                     }
                                 </div>
-                                <!-- External -->
                                 <div>
                                     <h3
                                         class="mb-2 text-sm font-semibold uppercase tracking-wider text-gray-500"
@@ -303,11 +309,7 @@ interface ProfileOption {
                                         >
                                             <mat-icon
                                                 class="text-teal-500"
-                                                style="
-                                                    font-size: 18px;
-                                                    width: 18px;
-                                                    height: 18px;
-                                                "
+                                                style="font-size: 18px; width: 18px; height: 18px"
                                                 >groups</mat-icon
                                             >
                                             <span
@@ -351,23 +353,30 @@ interface ProfileOption {
 })
 export class ChainDiagnoseComponent {
     readonly connectionConfig = inject(ConnectionConfigService);
-    private configProfilesApi = inject(ConfigProfilesApiService);
+    readonly panelDataService = inject(PanelDataService);
     private diagnoseService = inject(ChainDiagnoseService);
+    private route = inject(ActivatedRoute);
+    private router = inject(Router);
 
     readonly loading = signal(false);
-    readonly loadingProfiles = signal(false);
     readonly status = signal<string | null>(null);
     readonly error = signal<string | null>(null);
     readonly result = signal<DiagnoseResult | null>(null);
     readonly logs = signal<LogEntry[]>([]);
-    readonly configProfiles = signal<ProfileOption[]>([]);
+    readonly configProfiles = signal<PanelConfigProfileSummary[]>(
+        []
+    );
     readonly selectedProfileUuid = signal<string | null>(null);
     readonly vlessRouteId = signal<number | null>(null);
 
+    readonly lastUpdated = computed(() => {
+        const d = this.panelDataService.data();
+        if (!d) return null;
+        return this.formatTimestamp(d.meta.fetchedAt);
+    });
+
     constructor() {
-        if (this.connectionConfig.isConfigured()) {
-            this.fetchProfiles();
-        }
+        this.tryRestore();
     }
 
     async runDiagnose(): Promise<void> {
@@ -381,13 +390,63 @@ export class ChainDiagnoseComponent {
         this.logs.set([]);
 
         try {
+            let data = this.panelDataService.data();
+            if (!data) {
+                await this.panelDataService.refresh((s) =>
+                    this.status.set(s)
+                );
+                data = this.panelDataService.data();
+                if (!data)
+                    throw new Error("Failed to fetch panel data");
+                this.configProfiles.set(data.configProfiles);
+            }
             const res = await this.diagnoseService.diagnose(
                 routeId,
                 profileUuid,
+                data,
                 (s) => this.status.set(s)
             );
             this.result.set(res);
             this.logs.set(res.logs);
+            this.syncQueryParams();
+        } catch (e) {
+            this.error.set(
+                e instanceof Error
+                    ? e.message
+                    : "Unknown error occurred"
+            );
+        } finally {
+            this.loading.set(false);
+            this.status.set(null);
+        }
+    }
+
+    async refreshData(): Promise<void> {
+        this.loading.set(true);
+        this.error.set(null);
+
+        try {
+            await this.panelDataService.refresh((s) =>
+                this.status.set(s)
+            );
+            const data = this.panelDataService.data();
+            if (data) {
+                this.configProfiles.set(data.configProfiles);
+            }
+
+            const routeId = this.vlessRouteId();
+            const profileUuid = this.selectedProfileUuid();
+            if (routeId != null && profileUuid && data) {
+                const res = await this.diagnoseService.diagnose(
+                    routeId,
+                    profileUuid,
+                    data,
+                    (s) => this.status.set(s)
+                );
+                this.result.set(res);
+                this.logs.set(res.logs);
+            }
+            this.syncQueryParams();
         } catch (e) {
             this.error.set(
                 e instanceof Error
@@ -469,20 +528,42 @@ export class ChainDiagnoseComponent {
         }
     }
 
-    private async fetchProfiles(): Promise<void> {
-        this.loadingProfiles.set(true);
-        try {
-            const res = await this.configProfilesApi.getAll();
-            this.configProfiles.set(
-                res.response.configProfiles.map((p) => ({
-                    uuid: p.uuid,
-                    name: p.name,
-                }))
+    // -----------------------------------------------------------------------
+    // Private
+    // -----------------------------------------------------------------------
+
+    private tryRestore(): void {
+        if (!this.connectionConfig.isConfigured()) return;
+
+        const qId =
+            this.route.snapshot.queryParamMap.get(
+                "connection_id"
             );
-        } catch {
-            // Profiles will be empty; user can still try
-        } finally {
-            this.loadingProfiles.set(false);
+        const activeId =
+            this.connectionConfig.activeProfileId();
+        if (qId && qId === activeId) {
+            this.panelDataService.restore();
         }
+
+        const data = this.panelDataService.data();
+        if (data) {
+            this.configProfiles.set(data.configProfiles);
+        }
+    }
+
+    private syncQueryParams(): void {
+        const id = this.connectionConfig.activeProfileId();
+        this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: { connection_id: id },
+            queryParamsHandling: "replace",
+            replaceUrl: true,
+        });
+    }
+
+    private formatTimestamp(ts: number): string {
+        const d = new Date(ts);
+        const pad = (n: number) => String(n).padStart(2, "0");
+        return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
     }
 }

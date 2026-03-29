@@ -17,11 +17,10 @@ import {
     LogEntry,
 } from "../../components/log-viewer/log-viewer.component";
 import { ConnectionConfigService } from "../../services/connection-config.service";
-import { LocalStorageService } from "../../services/local-storage.service";
+import { PanelDataService } from "../../services/panel-data.service";
 import {
     ProxyChainService,
     ProxyChain,
-    ChainDetectionResult,
 } from "../../services/proxy-chain.service";
 
 interface ChainGroup {
@@ -29,18 +28,6 @@ interface ChainGroup {
     profileName: string;
     chains: ProxyChain[];
 }
-
-interface CachedChainResult {
-    connectionName: string;
-    domain: string;
-    port: string;
-    chains: ProxyChain[];
-    warnings: string[];
-    logs: LogEntry[];
-    timestamp: number;
-}
-
-const CACHE_KEY = "rw-chain-results";
 
 @Component({
     selector: "app-proxy-chains",
@@ -83,7 +70,7 @@ const CACHE_KEY = "rw-chain-results";
                 </mat-card-content>
             </mat-card>
         } @else {
-            <div class="mb-6 flex items-center gap-4">
+            <div class="mb-6 flex flex-wrap items-center gap-4">
                 <button
                     mat-raised-button
                     color="primary"
@@ -97,14 +84,22 @@ const CACHE_KEY = "rw-chain-results";
                     }
                     Detect Chains
                 </button>
+                <button
+                    mat-stroked-button
+                    (click)="refreshAndDetect()"
+                    [disabled]="loading()"
+                >
+                    <mat-icon>refresh</mat-icon>
+                    Refresh Data
+                </button>
                 @if (status()) {
                     <span class="text-sm text-gray-500">
                         {{ status() }}
                     </span>
                 }
-                @if (cachedAt()) {
+                @if (lastUpdated()) {
                     <span class="text-xs text-gray-400">
-                        Cached {{ cachedAt() }}
+                        Last updated {{ lastUpdated() }}
                     </span>
                 }
             </div>
@@ -221,16 +216,12 @@ const CACHE_KEY = "rw-chain-results";
                                             <div
                                                 class="flex items-stretch gap-3 overflow-x-auto pb-2 pt-4"
                                             >
-                                                <!-- User icon (start) -->
+                                                <!-- User icon -->
                                                 <div
                                                     class="flex flex-col items-center justify-center px-1 text-gray-400"
                                                 >
                                                     <mat-icon
-                                                        style="
-                                                            font-size: 28px;
-                                                            width: 28px;
-                                                            height: 28px;
-                                                        "
+                                                        style="font-size: 28px; width: 28px; height: 28px"
                                                         >person</mat-icon
                                                     >
                                                     <span
@@ -238,7 +229,6 @@ const CACHE_KEY = "rw-chain-results";
                                                         >User</span
                                                     >
                                                 </div>
-
                                                 <div
                                                     class="flex items-center"
                                                 >
@@ -248,7 +238,7 @@ const CACHE_KEY = "rw-chain-results";
                                                     >
                                                 </div>
 
-                                                <!-- Entry Host -->
+                                                <!-- Host -->
                                                 <div
                                                     class="flex min-w-[160px] flex-col rounded-lg border border-blue-200 bg-blue-50 p-3"
                                                 >
@@ -265,43 +255,39 @@ const CACHE_KEY = "rw-chain-results";
                                                         >
                                                         <span
                                                             class="text-sm font-medium text-blue-800"
-                                                        >
-                                                            {{
+                                                            >{{
                                                                 chain
                                                                     .host
                                                                     .remark
-                                                            }}
-                                                        </span>
+                                                            }}</span
+                                                        >
                                                     </div>
                                                     <span
                                                         class="text-xs text-blue-600"
-                                                    >
-                                                        {{
+                                                        >{{
                                                             chain
                                                                 .host
                                                                 .address
-                                                        }}
-                                                    </span>
+                                                        }}</span
+                                                    >
                                                     <span
                                                         class="text-xs text-blue-600"
-                                                    >
-                                                        Port:
+                                                        >Port:
                                                         {{
                                                             chain
                                                                 .host
                                                                 .port
-                                                        }}
-                                                    </span>
+                                                        }}</span
+                                                    >
                                                     <span
                                                         class="mt-auto inline-block self-start rounded bg-blue-200 px-1.5 py-0.5 text-xs font-medium text-blue-800"
-                                                    >
-                                                        Route
+                                                        >Route
                                                         {{
                                                             chain
                                                                 .host
                                                                 .vlessRouteId
-                                                        }}
-                                                    </span>
+                                                        }}</span
+                                                    >
                                                 </div>
 
                                                 @for (
@@ -309,7 +295,6 @@ const CACHE_KEY = "rw-chain-results";
                                                     track $index;
                                                     let last = $last
                                                 ) {
-                                                    <!-- Arrow -->
                                                     <div
                                                         class="flex items-center"
                                                     >
@@ -318,7 +303,6 @@ const CACHE_KEY = "rw-chain-results";
                                                             >east</mat-icon
                                                         >
                                                     </div>
-
                                                     <!-- Node -->
                                                     <div
                                                         class="flex min-w-[160px] flex-col rounded-lg border border-green-200 bg-green-50 p-3"
@@ -336,37 +320,32 @@ const CACHE_KEY = "rw-chain-results";
                                                             >
                                                             <span
                                                                 class="text-sm font-medium text-green-800"
-                                                            >
-                                                                {{
+                                                                >{{
                                                                     getFlag(
                                                                         hop.countryCode
                                                                     )
                                                                 }}
                                                                 {{
                                                                     hop.name
-                                                                }}
-                                                            </span>
+                                                                }}</span
+                                                            >
                                                         </div>
                                                         <span
                                                             class="text-xs text-green-600"
-                                                        >
-                                                            {{
+                                                            >{{
                                                                 hop.address
-                                                            }}
-                                                        </span>
+                                                            }}</span
+                                                        >
                                                         @if (
                                                             last &&
                                                             !hop.outbound
                                                         ) {
                                                             <span
                                                                 class="mt-auto inline-block self-start rounded bg-green-200 px-1.5 py-0.5 text-xs font-medium text-green-800"
+                                                                >Exit</span
                                                             >
-                                                                Exit
-                                                            </span>
                                                         }
                                                     </div>
-
-                                                    <!-- Outbound -->
                                                     @if (
                                                         hop.outbound
                                                     ) {
@@ -378,7 +357,7 @@ const CACHE_KEY = "rw-chain-results";
                                                                 >east</mat-icon
                                                             >
                                                         </div>
-
+                                                        <!-- Outbound -->
                                                         <div
                                                             class="flex min-w-[140px] flex-col rounded-lg border border-purple-200 bg-purple-50 p-3"
                                                         >
@@ -395,47 +374,43 @@ const CACHE_KEY = "rw-chain-results";
                                                                 >
                                                                 <span
                                                                     class="text-sm font-medium text-purple-800"
-                                                                >
-                                                                    {{
+                                                                    >{{
                                                                         hop
                                                                             .outbound
                                                                             .tag
-                                                                    }}
-                                                                </span>
+                                                                    }}</span
+                                                                >
                                                             </div>
                                                             <span
                                                                 class="text-xs text-purple-600"
-                                                            >
-                                                                {{
+                                                                >{{
                                                                     hop
                                                                         .outbound
                                                                         .address
-                                                                }}
-                                                            </span>
+                                                                }}</span
+                                                            >
                                                             <span
                                                                 class="text-xs text-purple-600"
-                                                            >
-                                                                Port:
+                                                                >Port:
                                                                 {{
                                                                     hop
                                                                         .outbound
                                                                         .port
-                                                                }}
-                                                            </span>
+                                                                }}</span
+                                                            >
                                                             <span
                                                                 class="mt-auto inline-block self-start rounded bg-purple-200 px-1.5 py-0.5 text-xs font-medium text-purple-800"
-                                                            >
-                                                                {{
+                                                                >{{
                                                                     hop
                                                                         .outbound
                                                                         .protocol
-                                                                }}
-                                                            </span>
+                                                                }}</span
+                                                            >
                                                         </div>
                                                     }
                                                 }
 
-                                                <!-- Globe icon (end) -->
+                                                <!-- Globe icon -->
                                                 <div
                                                     class="flex items-center"
                                                 >
@@ -448,11 +423,7 @@ const CACHE_KEY = "rw-chain-results";
                                                     class="flex flex-col items-center justify-center px-1 text-gray-400"
                                                 >
                                                     <mat-icon
-                                                        style="
-                                                            font-size: 28px;
-                                                            width: 28px;
-                                                            height: 28px;
-                                                        "
+                                                        style="font-size: 28px; width: 28px; height: 28px"
                                                         >public</mat-icon
                                                     >
                                                     <span
@@ -466,7 +437,6 @@ const CACHE_KEY = "rw-chain-results";
                                 }
                             }
 
-                            <!-- Show more / less -->
                             @if (group.chains.length > 3) {
                                 <div class="mt-1 text-center">
                                     @if (
@@ -512,11 +482,7 @@ const CACHE_KEY = "rw-chain-results";
                     >
                         <mat-icon
                             class="text-gray-400"
-                            style="
-                                font-size: 48px;
-                                width: 48px;
-                                height: 48px;
-                            "
+                            style="font-size: 48px; width: 48px; height: 48px"
                             >link_off</mat-icon
                         >
                         <p class="text-gray-500">
@@ -530,7 +496,7 @@ const CACHE_KEY = "rw-chain-results";
                 </mat-card>
             }
 
-            <!-- Detection Log -->
+            <!-- Log viewer -->
             @if (logs().length > 0) {
                 <div class="mt-4">
                     <app-log-viewer [logs]="logs()" />
@@ -541,8 +507,8 @@ const CACHE_KEY = "rw-chain-results";
 })
 export class ProxyChainsComponent {
     readonly connectionConfig = inject(ConnectionConfigService);
+    private panelDataService = inject(PanelDataService);
     private proxyChainService = inject(ProxyChainService);
-    private localStorage = inject(LocalStorageService);
     private route = inject(ActivatedRoute);
     private router = inject(Router);
 
@@ -554,7 +520,12 @@ export class ProxyChainsComponent {
     readonly logs = signal<LogEntry[]>([]);
     readonly hasDetected = signal(false);
     readonly expandedGroups = signal(new Set<string>());
-    readonly cachedAt = signal<string | null>(null);
+
+    readonly lastUpdated = computed(() => {
+        const d = this.panelDataService.data();
+        if (!d) return null;
+        return this.formatTimestamp(d.meta.fetchedAt);
+    });
 
     readonly chainGroups = computed(() => {
         const groups = new Map<string, ChainGroup>();
@@ -573,7 +544,7 @@ export class ProxyChainsComponent {
     });
 
     constructor() {
-        this.restoreFromCache();
+        this.tryRestore();
     }
 
     async detect(): Promise<void> {
@@ -583,20 +554,48 @@ export class ProxyChainsComponent {
         this.warnings.set([]);
         this.logs.set([]);
         this.expandedGroups.set(new Set());
-        this.cachedAt.set(null);
 
         try {
-            const result =
-                await this.proxyChainService.detectChains((s) =>
+            let data = this.panelDataService.data();
+            if (!data) {
+                await this.panelDataService.refresh((s) =>
                     this.status.set(s)
                 );
-            this.chains.set(result.chains);
-            this.warnings.set(result.warnings);
-            this.logs.set(result.logs);
-            this.hasDetected.set(true);
-
+                data = this.panelDataService.data();
+                if (!data)
+                    throw new Error("Failed to fetch panel data");
+            }
+            await this.runDetection(data);
             this.syncQueryParams();
-            this.saveToCache(result);
+        } catch (e) {
+            this.error.set(
+                e instanceof Error
+                    ? e.message
+                    : "Unknown error occurred"
+            );
+        } finally {
+            this.loading.set(false);
+            this.status.set(null);
+        }
+    }
+
+    async refreshAndDetect(): Promise<void> {
+        this.loading.set(true);
+        this.error.set(null);
+        this.chains.set([]);
+        this.warnings.set([]);
+        this.logs.set([]);
+        this.expandedGroups.set(new Set());
+
+        try {
+            await this.panelDataService.refresh((s) =>
+                this.status.set(s)
+            );
+            const data = this.panelDataService.data();
+            if (!data)
+                throw new Error("Failed to fetch panel data");
+            await this.runDetection(data);
+            this.syncQueryParams();
         } catch (e) {
             this.error.set(
                 e instanceof Error
@@ -626,97 +625,57 @@ export class ProxyChainsComponent {
             return "\u{1F310}";
         const offset = 0x1f1e6;
         const a =
-            countryCode.toUpperCase().charCodeAt(0) - 65 + offset;
+            countryCode.toUpperCase().charCodeAt(0) -
+            65 +
+            offset;
         const b =
-            countryCode.toUpperCase().charCodeAt(1) - 65 + offset;
+            countryCode.toUpperCase().charCodeAt(1) -
+            65 +
+            offset;
         return String.fromCodePoint(a, b);
     }
 
     // -----------------------------------------------------------------------
-    // Query params & cache
+    // Private
     // -----------------------------------------------------------------------
 
-    private getConnectionParams(): {
-        connectionName: string;
-        domain: string;
-        port: string;
-    } {
-        const profile = this.connectionConfig.activeProfile();
-        return {
-            connectionName: profile?.name ?? "",
-            domain: profile?.domain ?? "",
-            port: String(profile?.port ?? ""),
-        };
+    private async runDetection(
+        data: import("../../services/panel-data.service").PanelData
+    ): Promise<void> {
+        const result = await this.proxyChainService.detectChains(
+            data,
+            (s) => this.status.set(s)
+        );
+        this.chains.set(result.chains);
+        this.warnings.set(result.warnings);
+        this.logs.set(result.logs);
+        this.hasDetected.set(true);
+    }
+
+    private tryRestore(): void {
+        const qId =
+            this.route.snapshot.queryParamMap.get(
+                "connection_id"
+            );
+        const activeId =
+            this.connectionConfig.activeProfileId();
+        if (qId && qId === activeId) {
+            const restored = this.panelDataService.restore();
+            if (restored) {
+                const data = this.panelDataService.data()!;
+                this.runDetection(data);
+            }
+        }
     }
 
     private syncQueryParams(): void {
-        const p = this.getConnectionParams();
+        const id = this.connectionConfig.activeProfileId();
         this.router.navigate([], {
             relativeTo: this.route,
-            queryParams: {
-                connection_name: p.connectionName,
-                domain: p.domain,
-                port: p.port || null,
-            },
+            queryParams: { connection_id: id },
             queryParamsHandling: "replace",
             replaceUrl: true,
         });
-    }
-
-    private cacheKey(): string {
-        const p = this.getConnectionParams();
-        return `${CACHE_KEY}:${p.connectionName}:${p.domain}:${p.port}`;
-    }
-
-    private saveToCache(result: ChainDetectionResult): void {
-        const p = this.getConnectionParams();
-        const cached: CachedChainResult = {
-            connectionName: p.connectionName,
-            domain: p.domain,
-            port: p.port,
-            chains: result.chains,
-            warnings: result.warnings,
-            logs: result.logs,
-            timestamp: Date.now(),
-        };
-        this.localStorage.set(this.cacheKey(), cached);
-    }
-
-    private restoreFromCache(): void {
-        const snapshot = this.route.snapshot.queryParamMap;
-        const qName = snapshot.get("connection_name");
-        const qDomain = snapshot.get("domain");
-        const qPort = snapshot.get("port") ?? "";
-
-        // No query params → nothing to restore
-        if (!qName && !qDomain) return;
-
-        // Check if active connection matches query params
-        const p = this.getConnectionParams();
-        if (
-            qName &&
-            qDomain &&
-            qName === p.connectionName &&
-            qDomain === p.domain &&
-            qPort === p.port
-        ) {
-            const cached =
-                this.localStorage.get<CachedChainResult>(
-                    this.cacheKey()
-                );
-            if (
-                cached &&
-                cached.connectionName === p.connectionName &&
-                cached.domain === p.domain &&
-                cached.port === p.port
-            ) {
-                this.chains.set(cached.chains);
-                this.warnings.set(cached.warnings);
-                this.logs.set(cached.logs);
-                this.hasDetected.set(true);
-                this.cachedAt.set(this.formatTimestamp(cached.timestamp));
-            }
-        }
     }
 
     private formatTimestamp(ts: number): string {
