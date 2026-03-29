@@ -1,51 +1,118 @@
-![Angular Starter Banner](https://user-images.githubusercontent.com/7531596/128626297-df86020b-1cdc-43b5-a692-6c4c45534ec1.png)
+# RW Chain Manager
 
-<p align="center">
-  <a href="https://github.com/wlucha/rw-chain-manager/blob/master/LICENSE"><img src="https://img.shields.io/github/license/wlucha/rw-chain-manager" alt="License"></a>
-  <a href="https://github.com/wlucha/rw-chain-manager/stargazers"><img src="https://img.shields.io/github/stars/wlucha/rw-chain-manager?style=social" alt="Stars"></a>
-</p>
+A web-based diagnostic and management interface for [Remnawave](https://github.com/remnawave) proxy chains. Detects, visualizes, and troubleshoots proxy chain configurations across VPS nodes.
 
-<p align="center"><strong>A production-ready Angular 21 starter template with modern tooling, testing, and best practices baked in.</strong></p>
+## What It Does
 
----
+RW Chain Manager connects to a Remnawave panel via its API and provides tools to:
 
-## Features
+- **Detect proxy chains** by resolving host domains to node IPs, following XRay routing rules and outbound configs to build a visual chain map
+- **Diagnose chain health** with a 6-step validation pipeline that checks VLESS route IDs, config profile assignments, routing consistency, outbound targets, and host states
+- **Show affected squads** (internal and external) for a given chain configuration
+- **Manage multiple connections** to different Remnawave panels, with profile import/export
 
-| Category | Tool | Description |
-|----------|------|-------------|
-| **Framework** | Angular 21 | Latest Angular with signals, standalone components & new control flow |
-| **UI** | Angular Material | Material Design component library |
-| **Styling** | Tailwind CSS 4 | Utility-first CSS framework |
-| **Unit Testing** | Jest 30 | Fast, reliable unit tests with `jest-preset-angular` |
-| **E2E Testing** | Playwright | Cross-browser E2E tests (Chromium, Firefox, WebKit) |
-| **Linting** | ESLint 10 | Static analysis with Angular & TypeScript rules |
-| **Formatting** | Prettier | Consistent code formatting |
-| **i18n** | Transloco | Runtime internationalization |
-| **Documentation** | Compodoc | Auto-generated project documentation |
-| **Component Dev** | Storybook 10 | Isolated component development & showcase |
-| **Bundle Analysis** | Source Map Explorer | Visualize bundle size & composition |
-| **Containerization** | Docker | Production-ready Dockerfile |
-| **Commit Quality** | Commitlint + Husky | Enforce conventional commits via Git hooks |
-| **Security** | AuditJS | Dependency vulnerability scanning |
-| **Changelog** | auto-changelog | Automatically generated CHANGELOG |
+### Proxy Chain Concept
 
----
+A proxy chain is an ordered path through VPS nodes:
+
+```
+User -> Host (domain) -> Node A (entry) -> [routing rule] -> Outbound -> Node B (exit) -> Internet
+```
+
+The chain is defined by:
+1. A **Host** with a VLESS route ID
+2. The Host's domain resolving to a **Node**'s IP address
+3. The Node's **Config Profile** containing routing rules that match the VLESS route ID
+4. Routing rules pointing to **outbounds** whose addresses lead to the next Node
+
+## Pages
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/dashboard` | Dashboard | Connection status overview with quick-action cards |
+| `/connection` | Connection | Multi-profile connection manager (save, switch, import/export) |
+| `/chains` | Proxy Chains | Detect and visualize all proxy chains, grouped by config profile |
+| `/chain-diagnose` | Chain Diagnostics | Validate a specific VLESS route ID + config profile combination |
+| `/about` | About | Project info and tech stack |
+
+## Architecture
+
+### Centralized Panel Data
+
+All Remnawave API data flows through a single `PanelDataService` that:
+
+- Fetches hosts, nodes, config profiles (including computed XRay configs), and squads in parallel
+- Stores everything in a typed `PanelData` model per connection
+- Persists to `localStorage` keyed by connection ID
+- Auto-clears when the active connection changes
+- Is shared across all pages — no duplicate API calls
+
+```
+PanelDataService (singleton)
+    |
+    +-- PanelData
+    |     +-- meta (connectionId, fetchedAt, ...)
+    |     +-- hosts[]
+    |     +-- nodes[]
+    |     +-- configProfiles[]
+    |     +-- computedConfigs (Record<uuid, XRayConfig>)
+    |     +-- externalSquads[]
+    |     +-- internalSquads[]
+    |
+    +-- Used by:
+          +-- ProxyChainService.detectChains(data)
+          +-- ChainDiagnoseService.diagnose(routeId, profileUuid, data)
+```
+
+### Key Services
+
+| Service | Responsibility |
+|---------|---------------|
+| `PanelDataService` | Fetches and caches all Remnawave panel data per connection |
+| `ProxyChainService` | Detects chains via DNS resolution and XRay config traversal |
+| `ChainDiagnoseService` | Runs sequential validation checks on a VLESS route + profile |
+| `ConnectionConfigService` | Manages connection profiles (multi-profile, localStorage) |
+| `DnsService` | Resolves domains via Cloudflare DNS-over-HTTPS with caching |
+
+### DNS Resolution
+
+Chain detection resolves host and outbound domains to IP addresses using [Cloudflare's DNS-over-HTTPS API](https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/) (`cloudflare-dns.com/dns-query`). Results are cached in-memory for the session.
+
+## Tech Stack
+
+| Category | Tool | Version |
+|----------|------|---------|
+| Framework | Angular | 21 |
+| UI Components | Angular Material | 21 |
+| Styling | Tailwind CSS | 4 |
+| API Contract | @remnawave/backend-contract | 2.6.x |
+| Unit Testing | Jest | 30 |
+| E2E Testing | Playwright | 1.58 |
+| Linting | ESLint | 10 |
+| Formatting | Prettier | 3.8 |
+| i18n | Transloco | 8.2 |
+| Documentation | Compodoc | 1.2 |
+| Component Dev | Storybook | 10 |
+| Containerization | Docker | - |
+
+Angular patterns used throughout:
+- Standalone components (no NgModules)
+- Signals and `computed()` for state management
+- `OnPush` change detection
+- Lazy-loaded routes with route animations
+- `inject()` function (no constructor injection)
 
 ## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/wlucha/rw-chain-manager
-cd rw-chain-manager
-
 # Install dependencies
 npm install
 
 # Start the development server
-npm run start
+npm start
 ```
 
-Open [http://localhost:4200](http://localhost:4200) in your browser.
+Open [http://localhost:4200](http://localhost:4200). Configure a connection to your Remnawave panel on the Connection page.
 
 ### Docker
 
@@ -54,67 +121,54 @@ docker build . -t rw-chain-manager
 docker run -p 3000:80 rw-chain-manager
 ```
 
----
-
-## Available Scripts
+## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm run start` | Start the dev server on `localhost:4200` |
+| `npm start` | Dev server on `localhost:4200` |
 | `npm run build:prod` | Production build with optimizations |
-| `npm run test` | Run unit tests with Jest |
-| `npm run test:ci` | Run unit tests in CI mode (sequential) |
-| `npm run test:coverage` | Run tests with coverage report |
-| `npm run e2e` | Run E2E tests with Playwright |
-| `npm run lint` | Lint the project with ESLint |
-| `npm run prettier` | Format all files with Prettier |
-| `npm run storybook` | Launch Storybook on `localhost:6006` |
-| `npm run compodoc` | Generate documentation with Compodoc |
-| `npm run analyze` | Analyze bundle size with Source Map Explorer |
-| `npm run audit` | Audit dependencies for vulnerabilities |
-
----
+| `npm test` | Unit tests (Jest) |
+| `npm run e2e` | E2E tests (Playwright) |
+| `npm run lint` | Lint with ESLint |
+| `npm run prettier` | Format with Prettier |
+| `npm run storybook` | Storybook on `localhost:6006` |
+| `npm run compodoc` | Generate API documentation |
+| `npm run analyze` | Bundle size analysis |
 
 ## Project Structure
 
 ```
-rw-chain-manager/
-├── src/
-│   ├── app/              # Application source code
-│   ├── assets/            # Static assets
-│   ├── environments/      # Environment configs
-│   └── stories/           # Storybook stories
-├── tests/                 # Playwright E2E tests
-├── angular.json           # Angular CLI configuration
-├── jest.config.ts         # Jest configuration
-├── playwright.config.ts   # Playwright configuration
-├── eslint.config.mjs      # ESLint flat config
-└── tsconfig.json          # TypeScript configuration
+src/app/
+  pages/
+    dashboard/          Dashboard page
+    home/               Connection manager (multi-profile)
+    proxy-chains/       Chain detection and visualization
+    chain-diagnose/     Chain diagnostics with health checks
+    about/              About page
+  services/
+    panel-data.service          Centralized Remnawave data store
+    proxy-chain.service         Chain detection logic
+    chain-diagnose.service      Diagnostic check pipeline
+    connection-config.service   Connection profile management
+    dns.service                 DNS-over-HTTPS resolution
+    base-api.service            HTTP layer (Fetch API + auth headers)
+    api/                        25+ typed API services (hosts, nodes, configs, squads, ...)
+  components/
+    log-viewer/         Reusable collapsible log viewer
+  layout/               Shell layout with Material sidenav
+  animations/           Route transition animations
 ```
 
----
+## Remnawave API
 
-## Demo & Deployment
+The app communicates with the Remnawave panel through a CORS proxy. The API contract is defined by `@remnawave/backend-contract` and the local spec at `src/assets/remnawave-api.json`.
 
-- **Live Demo**: [Open in StackBlitz](https://stackblitz.com/github/wlucha/rw-chain-manager)
-- **Deploy to Heroku**: [![Deploy](https://www.herokucdn.com/deploy/button.png)](https://heroku.com/deploy)
-
----
-
-## Contributing
-
-Contributions are welcome! Please read the [Contribution Guidelines](CONTRIBUTING.md) before submitting a PR.
-
-Have a feature request or found a bug? [Open an issue](https://github.com/wlucha/rw-chain-manager/issues).
-
----
+Requests flow through `BaseApiService` which handles:
+- URL construction via the configured proxy endpoint
+- Bearer token authentication
+- Optional `X-Api-Key` header for reverse proxy auth
+- Forwarded headers (`x-forwarded-for`, `x-forwarded-proto`)
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
-
----
-
-<p align="center">
-  If this project helps you, please give it a ⭐ on <a href="https://github.com/wlucha/rw-chain-manager">GitHub</a>!
-</p>
+[MIT](LICENSE)

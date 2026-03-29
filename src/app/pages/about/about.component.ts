@@ -16,9 +16,29 @@ import { MatDividerModule } from "@angular/material/divider";
             </mat-card-header>
             <mat-card-content class="mt-4">
                 <p class="mb-4 text-gray-600">
-                    A web-based management interface for Remnawave proxy panel.
-                    Built with Angular and Angular Material.
+                    A web-based interface for Remnawave proxy panel, designed to
+                    detect and inspect proxy chains created in it. Built with
+                    Angular and Angular Material.
                 </p>
+
+                <mat-divider />
+
+                <h3 class="mb-2 text-base font-medium">
+                    What about my data? Do you care about it? Personal data
+                    compliance?
+                </h3>
+                <div class="text-sm text-gray-600">
+                    <p>
+                        This is a static web page that runs entirely in your
+                        browser. I do not care shit about your data, you can
+                        only cry about it. Also, fuck GDPR/DMCA/152-FA and all
+                        other useless regulations that only serve to protect
+                        corporations at the expense of user privacy.
+                    </p>
+                    <br />
+                    <p>sincerely yours,</p>
+                    <p>Kenya-West</p>
+                </div>
 
                 <mat-divider />
 
@@ -38,7 +58,21 @@ import { MatDividerModule } from "@angular/material/divider";
 
                 <div>
                     <h3 class="mb-2 text-base font-medium">Author</h3>
-                    <p class="text-sm text-gray-600">Kenya-West</p>
+                    <p class="text-sm text-gray-600">
+                        <a
+                            href="https://github.com/kenya-west"
+                            target="_blank"
+                            class="text-indigo-600 underline"
+                            >Kenya-West</a
+                        >
+                        •
+                        <a
+                            href="https://hire.kenyawest.me"
+                            target="_blank"
+                            class="text-indigo-600 underline"
+                            >Hire Me</a
+                        >
+                    </p>
                 </div>
             </mat-card-content>
         </mat-card>

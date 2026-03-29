@@ -44,33 +44,46 @@ import { ConnectionConfigService } from "../../services/connection-config.servic
 
             <mat-card appearance="outlined">
                 <mat-card-header>
-                    <mat-icon matCardAvatar>people</mat-icon>
-                    <mat-card-title>Users</mat-card-title>
-                    <mat-card-subtitle>Management</mat-card-subtitle>
+                    <mat-icon matCardAvatar>link</mat-icon>
+                    <mat-card-title>Proxy Chains</mat-card-title>
+                    <mat-card-subtitle>Detect</mat-card-subtitle>
                 </mat-card-header>
                 <mat-card-content>
                     <p class="text-sm text-gray-600">
-                        View and manage user accounts and subscriptions.
+                        View and detect proxy chains and their configurations.
                     </p>
                 </mat-card-content>
                 <mat-card-actions>
-                    <button mat-button disabled>Coming Soon</button>
+                    <a mat-button routerLink="/chains">
+                        {{
+                            connectionConfig.isConfigured()
+                                ? "View Settings"
+                                : "Configure"
+                        }}
+                    </a>
                 </mat-card-actions>
             </mat-card>
 
             <mat-card appearance="outlined">
                 <mat-card-header>
-                    <mat-icon matCardAvatar>dns</mat-icon>
-                    <mat-card-title>Nodes</mat-card-title>
-                    <mat-card-subtitle>Infrastructure</mat-card-subtitle>
+                    <mat-icon matCardAvatar>troubleshoot</mat-icon>
+                    <mat-card-title>Chain Diagnostics</mat-card-title>
+                    <mat-card-subtitle>Inspect</mat-card-subtitle>
                 </mat-card-header>
                 <mat-card-content>
                     <p class="text-sm text-gray-600">
-                        Monitor and manage proxy nodes and their status.
+                        Inspect and diagnose issues with your proxy chains in
+                        your Remnawave setup.
                     </p>
                 </mat-card-content>
                 <mat-card-actions>
-                    <button mat-button disabled>Coming Soon</button>
+                    <a mat-button routerLink="/chain-diagnose">
+                        {{
+                            connectionConfig.isConfigured()
+                                ? "Run Diagnostics"
+                                : "Configure Connection"
+                        }}
+                    </a>
                 </mat-card-actions>
             </mat-card>
         </div>
