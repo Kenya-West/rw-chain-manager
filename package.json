@@ -65,7 +65,7 @@
     "@angular/platform-browser-dynamic": "^21.1.5",
     "@angular/router": "^21.1.5",
     "@jsverse/transloco": "^8.2.1",
-    "@remnawave/backend-contract": "^2.6.45",
+    "@remnawave/backend-contract": "^2.8.1",
     "@tailwindcss/postcss": "^4.2.0",
     "postcss": "^8.5.6",
     "rxjs": "~7.8.2",

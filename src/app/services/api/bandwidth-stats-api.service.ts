@@ -4,7 +4,6 @@ import {
     GetLegacyStatsNodeUserUsageCommand,
     GetLegacyStatsUserUsageCommand,
     GetStatsNodeUsersUsageCommand,
-    GetStatsNodesRealtimeUsageCommand,
     GetStatsNodesUsageCommand,
     GetStatsUserUsageCommand,
 } from "@remnawave/backend-contract";
@@ -19,14 +18,6 @@ export class BandwidthStatsApiService {
         return this.api.request({
             method: GetStatsNodesUsageCommand.endpointDetails.REQUEST_METHOD,
             url: GetStatsNodesUsageCommand.url,
-        });
-    }
-
-    getNodesRealtimeUsage(): Promise<GetStatsNodesRealtimeUsageCommand.Response> {
-        return this.api.request({
-            method: GetStatsNodesRealtimeUsageCommand.endpointDetails
-                .REQUEST_METHOD,
-            url: GetStatsNodesRealtimeUsageCommand.url,
         });
     }
 

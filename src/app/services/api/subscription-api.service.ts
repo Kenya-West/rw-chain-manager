@@ -19,10 +19,13 @@ export class SubscriptionApiService {
         });
     }
 
-    getByShortUuidByClientType(shortUuid: string): Promise<unknown> {
+    getByShortUuidByClientType(
+        shortUuid: string,
+        clientType: string
+    ): Promise<unknown> {
         return this.api.request({
             method: "get",
-            url: GetSubscriptionByShortUuidByClientTypeCommand.url(shortUuid),
+            url: `${GetSubscriptionByShortUuidByClientTypeCommand.url(shortUuid)}/${clientType}`,
         });
     }
 
